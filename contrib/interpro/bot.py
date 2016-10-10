@@ -154,24 +154,24 @@ class IPRTerm:
             mongo_logger.error('wdapierror', exc_info=True,
                                extra={'main_data_id': self.id, 'wdid': wd_item.wd_item_id})
             exc_logger.exception("wdapierror " + self.id + " " + wd_item.wd_item_id)
-            raise(e)
+            raise (e)
         if create_new_item:
             info_logger.info("item_created " + self.id + " " + wd_item.wd_item_id)
         else:
             info_logger.info("item_updated " + self.id + " " + wd_item.wd_item_id)
 
-    def create_relationships(self, perform_write=True):
+    def create_relationships(self):
         self.do_wdid_lookup()
 
         statements = [PBB_Core.WDExternalID(value=self.id, prop_nr=IPRTerm.INTERPRO, references=[self.reference])]
         if self.parent:
-            statements.append(
-                PBB_Core.WDItemID(value=self.parent, prop_nr='P279', references=[self.reference]))  # subclass of
+            # subclass of
+            statements.append(PBB_Core.WDItemID(value=self.parent_wdid, prop_nr='P279', references=[self.reference]))
         if self.contains:
-            for c in self.contains:
+            for c in self.contains_wdid:
                 statements.append(PBB_Core.WDItemID(value=c, prop_nr='P527', references=[self.reference]))  # has part
         if self.found_in:
-            for f in self.found_in:
+            for f in self.found_in_wdid:
                 statements.append(PBB_Core.WDItemID(value=f, prop_nr='P361', references=[self.reference]))  # part of
         if len(statements) == 1:
             return
@@ -179,7 +179,7 @@ class IPRTerm:
         wd_item = PBB_Core.WDItemEngine(item_name=self.name, domain='interpro', data=statements,
                                         append_value=['P279', 'P527', 'P361'],
                                         fast_run=True, fast_run_base_filter=IPRTerm.fast_run_base_filter)
-        if wd_item.require_write and perform_write:
+        if wd_item.require_write:
             self.try_write(wd_item)
 
 
@@ -187,58 +187,78 @@ def create_interpro_items():
     ## insert all interpro items
     coll = IPR_COLL
     ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
-    terms = []
     cursor = coll.find(no_cursor_timeout=True)
     for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
-        iprid = int(doc['_id'].replace("IPR", ""))
-        if iprid != 33147:
-            continue
         term = IPRTerm(**doc, interpro_version=ipr_version)
-        wd_item = term.create_item()
-        terms.append(term)
+        term.create_item()
     cursor.close()
+
+
+def create_ipr_relationships():
+    coll = IPR_COLL
+    ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
+    terms = []
+    for doc in coll.find():
+        term = IPRTerm(**doc, interpro_version=ipr_version)
+        terms.append(term)
     IPRTerm.refresh_ipr_wd()
-    return terms
-
-
-def create_ipr_relationships(terms):
-    for term in terms:
+    for term in tqdm(terms):
         term.create_relationships()
 
 
 if __name__ == "!__main__":
-    terms = create_interpro_items()
-    create_ipr_relationships(terms)
+    create_interpro_items()
+    create_ipr_relationships()
 
 
 def create_uniprot_relationships():
+    wc = 0
     coll = UNIPROT_COLL
-    cursor = coll.find()
-    doc = next(cursor)
-    uniprot_id = doc['_id']
-    ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
-    statements = []
-    # uniprot ID. needed for PBB_core to find uniprot item
-    statements.append(PBB_Core.WDExternalID(value=uniprot_id, prop_nr=UNIPROT))
+    # only do uniprot proteins that are already in wikidata
+    uniprot2wd = WDHelper().id_mapper(UNIPROT)
+    cursor = coll.find({'_id': {'$in': list(uniprot2wd.keys())}})
+    for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
+        uniprot_id = doc['_id']
+        ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
+        statements = []
+        # uniprot ID. needed for PBB_core to find uniprot item
+        # statements.append(PBB_Core.WDExternalID(value=uniprot_id, prop_nr=UNIPROT))
 
-    ## References
-    # stated in Interpro version XX.X
-    ref_stated_in = PBB_Core.WDItemID(interpro_version2wdid[ipr_version], 'P248', is_reference=True)
-    ref_ipr = PBB_Core.WDString("http://www.ebi.ac.uk/interpro/protein/{}".format(uniprot_id), "P854",
-                                is_reference=True)
-    reference = [ref_stated_in, ref_ipr]
+        ## References
+        # stated in Interpro version XX.X
+        ref_stated_in = PBB_Core.WDItemID(interpro_version2wdid[ipr_version], 'P248', is_reference=True)
+        ref_ipr = PBB_Core.WDString("http://www.ebi.ac.uk/interpro/protein/{}".format(uniprot_id), "P854",
+                                    is_reference=True)
+        reference = [ref_stated_in, ref_ipr]
 
-    if doc['subclass']:
-        for f in doc['subclass']:
-            statements.append(PBB_Core.WDItemID(value=f, prop_nr='P279', references=[reference]))
-    if doc['has_part']:
-        for hp in doc['has_part']:
-            statements.append(PBB_Core.WDItemID(value=hp, prop_nr='P527', references=[reference]))
+        if doc['subclass']:
+            for f in doc['subclass']:
+                statements.append(PBB_Core.WDItemID(value=IPRTerm.ipr2wd[f], prop_nr='P279', references=[reference]))
+        if doc['has_part']:
+            for hp in doc['has_part']:
+                statements.append(PBB_Core.WDItemID(value=IPRTerm.ipr2wd[hp], prop_nr='P527', references=[reference]))
 
-    item = PBB_Core.WDItemEngine(data=statements, fast_run=True, fast_run_base_filter={UNIPROT: ""},
-                                 append_value=["P279", "P527", "P361"])
-    if item.create_new_item:
-        pass
+        wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
+                                        fast_run=True, fast_run_base_filter={UNIPROT: ""},
+                                        append_value=["P279", "P527", "P361"])
+
+        if wd_item.require_write:
+            wc += 1
+            create_new_item = wd_item.create_new_item
+            if create_new_item:
+                raise ValueError("something bad happened")
+            try:
+                wd_item.write(IPRTerm.login_instance, edit_summary="add/update family and/or domains")
+            except WDApiError as e:
+                mongo_logger.error('wdapierror', exc_info=True,
+                                   extra={'main_data_id': uniprot_id, 'wdid': wd_item.wd_item_id})
+                exc_logger.exception("wdapierror " + uniprot_id + " " + wd_item.wd_item_id)
+                raise(e)
+            if create_new_item:
+                info_logger.info("item_created " + uniprot_id + " " + wd_item.wd_item_id)
+            else:
+                info_logger.info("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
+                print("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
 
 
 """
