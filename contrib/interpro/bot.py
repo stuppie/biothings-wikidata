@@ -238,9 +238,13 @@ def create_uniprot_relationships():
             for hp in doc['has_part']:
                 statements.append(PBB_Core.WDItemID(value=IPRTerm.ipr2wd[hp], prop_nr='P527', references=[reference]))
 
-        wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
+        try:
+            wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
                                         fast_run=True, fast_run_base_filter={UNIPROT: ""},
                                         append_value=["P279", "P527", "P361"])
+        except KeyError as e:
+            exc_logger.exception("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
+            continue
 
         if wd_item.require_write:
             wc += 1
