@@ -1,18 +1,14 @@
+import argparse
 import logging
 
 from ProteinBoxBot_Core import PBB_Core, PBB_login
 from ProteinBoxBot_Core.PBB_Core import WDApiError
 from interproscan.WDHelper import WDHelper
 from interproscan.local import WDUSER, WDPASS
-from log4mongo.handlers import MongoHandler
 from pymongo import MongoClient
 from tqdm import tqdm
 
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-handler = MongoHandler(host='localhost', database_name='logs', collection='interpro')
-mongo_logger = logging.getLogger(__name__)
-mongo_logger.addHandler(handler)
-
 info_logger = logging.getLogger('info_logger')
 info_logger.setLevel(logging.INFO)
 info_handler = logging.FileHandler('info_logger.log')
@@ -151,10 +147,8 @@ class IPRTerm:
         try:
             wd_item.write(IPRTerm.login_instance)
         except WDApiError as e:
-            mongo_logger.error('wdapierror', exc_info=True,
-                               extra={'main_data_id': self.id, 'wdid': wd_item.wd_item_id})
             exc_logger.exception("wdapierror " + self.id + " " + wd_item.wd_item_id)
-            raise (e)
+            # raise e
         if create_new_item:
             info_logger.info("item_created " + self.id + " " + wd_item.wd_item_id)
         else:
@@ -206,11 +200,6 @@ def create_ipr_relationships():
         term.create_relationships()
 
 
-if __name__ == "!__main__":
-    create_interpro_items()
-    create_ipr_relationships()
-
-
 def create_uniprot_relationships():
     wc = 0
     coll = UNIPROT_COLL
@@ -240,8 +229,8 @@ def create_uniprot_relationships():
 
         try:
             wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
-                                        fast_run=True, fast_run_base_filter={UNIPROT: ""},
-                                        append_value=["P279", "P527", "P361"])
+                                            fast_run=True, fast_run_base_filter={UNIPROT: ""},
+                                            append_value=["P279", "P527", "P361"])
         except KeyError as e:
             exc_logger.exception("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
             continue
@@ -254,10 +243,8 @@ def create_uniprot_relationships():
             try:
                 wd_item.write(IPRTerm.login_instance, edit_summary="add/update family and/or domains")
             except WDApiError as e:
-                mongo_logger.error('wdapierror', exc_info=True,
-                                   extra={'main_data_id': uniprot_id, 'wdid': wd_item.wd_item_id})
                 exc_logger.exception("wdapierror " + uniprot_id + " " + wd_item.wd_item_id)
-                raise(e)
+                # raise e
             if create_new_item:
                 info_logger.info("item_created " + uniprot_id + " " + wd_item.wd_item_id)
             else:
@@ -265,13 +252,21 @@ def create_uniprot_relationships():
                 print("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
 
 
-"""
-ref_stated_in = PBB_Core.WDItemID('Q27135875', 'P248', is_reference=True)
-ref_ipr = PBB_Core.WDString('IPR004695', 'P2926', is_reference=True)
-reference = [ref_stated_in, ref_ipr]
-statements = [PBB_Core.WDExternalID(value='IPR004695', prop_nr='P2926', references=[reference]),
-              PBB_Core.WDItemID(value='Q417841', prop_nr="P279", references=[reference])]
-PBB_Core.WDItemEngine(item_name='Voltage-dependent anion channel', domain='interpro', data=statements,
-                      append_value=['P279'],
-                      fast_run=True, fast_run_base_filter={'P2926': ''})
-"""
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='run interpro wikidata import bot. If no options given, run all 3')
+    parser.add_argument('--items', action='store_true', help='create/update interpro items')
+    parser.add_argument('--rel', action='store_true', help='add inter-interpro relationships')
+    parser.add_argument('--uniprot', action='store_true', help='add uniprot/protein to interpro relationships')
+    args = parser.parse_args()
+
+    if args.items:
+        create_interpro_items()
+    if args.rel:
+        create_ipr_relationships()
+    if args.uniprot:
+        create_uniprot_relationships()
+
+    if not (args.items or args.rel or args.uniprot):
+        create_interpro_items()
+        create_ipr_relationships()
+        create_uniprot_relationships()
