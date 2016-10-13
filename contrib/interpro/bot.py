@@ -1,3 +1,11 @@
+"""
+
+
+# sparql query to track progress
+http://tinyurl.com/hdr3jnl
+"""
+
+
 import argparse
 import logging
 
@@ -205,7 +213,7 @@ def create_uniprot_relationships():
     coll = UNIPROT_COLL
     # only do uniprot proteins that are already in wikidata
     uniprot2wd = WDHelper().id_mapper(UNIPROT)
-    cursor = coll.find({'_id': {'$in': list(uniprot2wd.keys())}})
+    cursor = coll.find({'_id': {'$in': list(uniprot2wd.keys())}}, no_cursor_timeout=True)
     for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
         uniprot_id = doc['_id']
         ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
@@ -233,6 +241,7 @@ def create_uniprot_relationships():
                                             append_value=["P279", "P527", "P361"])
         except KeyError as e:
             exc_logger.exception("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
+            print("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
             continue
 
         if wd_item.require_write:
@@ -242,14 +251,16 @@ def create_uniprot_relationships():
                 raise ValueError("something bad happened")
             try:
                 wd_item.write(IPRTerm.login_instance, edit_summary="add/update family and/or domains")
-            except WDApiError as e:
-                exc_logger.exception("wdapierror " + uniprot_id + " " + wd_item.wd_item_id)
+            except Exception as e:
+                exc_logger.exception("write_error " + uniprot_id + " " + wd_item.wd_item_id + "\n" + str(e))
+                continue
                 # raise e
             if create_new_item:
                 info_logger.info("item_created " + uniprot_id + " " + wd_item.wd_item_id)
             else:
                 info_logger.info("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
                 print("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
+    cursor.close()
 
 
 if __name__ == "__main__":
