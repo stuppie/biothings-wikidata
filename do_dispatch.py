@@ -25,9 +25,9 @@ src_dump = get_src_dump()
 
 
 def check_mongo():
-    '''Check for "pending_to_upload" flag in src_dump collection.
+    """Check for "pending_to_upload" flag in src_dump collection.
        And return a list of sources should be uploaded.
-    '''
+    """
     # filter some more: _id is supposed to be a user-defined string, not an ObjectId()
     src_dump = get_src_dump()
     return [src['_id'] for src in src_dump.find({'pending_to_upload': True}) if type(src['_id']) == str]
@@ -43,7 +43,7 @@ def dispatch_src_upload(src):
         upload_logfile = os.path.join(config.DATA_ARCHIVE_ROOT, '{}_upload.log'.format(src))
 
     log_f, logfile = safewfile(upload_logfile, prompt=False, default='O')
-    p = Popen(['python', '-u', '/home/gstupp/projects/biothings/wikidata/upload.py', src],
+    p = Popen(['python', '-u', "upload.py", src],
               stdout=log_f, stderr=STDOUT, cwd=config.APP_PATH)
     p.log_f = log_f
     return p
