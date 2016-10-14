@@ -1,5 +1,5 @@
 from config_common import *
-
+APP_PATH="/home/gstupp/projects/biothings/wikidata"
 ES_HOST = 'localhost:9200'
 
 ES_INDEX_NAME = "interpro"

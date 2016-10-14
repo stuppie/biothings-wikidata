@@ -12,5 +12,6 @@ class InterproDbinfoUploader(uploader.BaseSourceUploader):
         for x in info:
             yield x
 
+    @classmethod
     def get_mapping(self):
         return {}

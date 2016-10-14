@@ -10,5 +10,6 @@ class InterproUploader(uploader.BaseSourceUploader):
     def load_data(self, data_folder):
         return parse_interpro_xml(data_folder)
 
+    @classmethod
     def get_mapping(self):
         return {}

@@ -12,7 +12,11 @@ import logging
 from ProteinBoxBot_Core import PBB_Core, PBB_login
 from ProteinBoxBot_Core.PBB_Core import WDApiError
 from interproscan.WDHelper import WDHelper
-from interproscan.local import WDUSER, WDPASS
+try:
+    from interproscan.local import WDUSER, WDPASS
+except ImportError:
+    from local import WDUSER, WDPASS
+
 from pymongo import MongoClient
 from tqdm import tqdm
 
