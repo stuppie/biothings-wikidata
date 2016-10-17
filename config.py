@@ -63,7 +63,10 @@ TARGET_ES_INDEX_SUFFIX = '_current'
 
 # fill with "token", "roomid" and "from" keys
 # to broadcast message to a Hipchat room
-HIPCHAT_CONFIG = { "token" : "", "roomid" : "", "from" : "" }
-
+HIPCHAT_CONFIG = {
+    "token" : "vi2IO8UpY7dKzll19SOP4UdIKz5FjaU0ibVdYu4E",
+    "roomid" : "2671926",
+    "from" : "gss"
+}
 # path to ipcluster json config file (if any)
 CLUSTER_CLIENT_JSON = None

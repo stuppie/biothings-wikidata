@@ -130,11 +130,7 @@ class DocDispatcher(object):
                 p.log_f.close()
 
                 if returncode == 0:
-                    msg = 'Dispatcher:  "{}" uploader finished successfully with code {} (time: {})'.format(src,
-                                                                                                            returncode,
-                                                                                                            timesofar(
-                                                                                                                p.t0,
-                                                                                                                t1=t1))
+                    msg = 'Dispatcher:  "{}" uploader finished successfully with code {} (time: {})'.format(src, returncode, timesofar(p.t0,t1=t1))
                     print(msg)
                     if hipchat_msg:
                         msg += '<a href="{}/log/dump/{}">dump log</a>'.format(DATA_WWW_ROOT_URL, src)
@@ -160,7 +156,6 @@ class DocDispatcher(object):
         print("upload failed: {}".format(src_name))
 
     def handle_interpro_bot(self):
-
         # cleanup src and target collections
         # src_clean_archives(noconfirm=True)
         # target_clean_collections(noconfirm=True)
@@ -173,19 +168,17 @@ class DocDispatcher(object):
             msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(conf, returncode, t)
             color = "green"
         else:
-            msg = 'Dispatcher:  "{}" builder failed successfully with code {} (time: {})'.format(conf, returncode, t)
+            msg = 'Dispatcher:  "{}" builder failed with code {} (time: {})'.format(conf, returncode, t)
             color = "red"
         print(msg)
         if hipchat_msg:
             msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL, conf)
             hipchat_msg(msg, message_format='html', color=color)
 
-        assert returncode == 0, "Subprocess failed. Check error above."
-
     def run(self, args=[]):
         _flag = len(args) == 2
         while 1:
-            self.idle = True
+            self.idle = False
             self.check_src_dump()
             self.check_src_upload()
             # exit(1)
