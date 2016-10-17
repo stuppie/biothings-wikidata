@@ -1,5 +1,6 @@
 from config_common import *
-APP_PATH="/home/gstupp/projects/biothings/wikidata"
+from local import *
+#APP_PATH="/home/gstupp/projects/biothings/wikidata"
 ES_HOST = 'localhost:9200'
 
 ES_INDEX_NAME = "interpro"
@@ -44,7 +45,7 @@ DATA_SERVER_PASSWORD = ''
 LOG_FOLDER = 'logs'
 
 # Absolute path !
-DATA_ARCHIVE_ROOT = '/home/gstupp/projects/biothings/wikidata/data'
+# DATA_ARCHIVE_ROOT = '/home/gstupp/projects/biothings/wikidata/data'
 # if True then all data directory will be kept
 # otherwise only latest will be kept (while downloading, previous
 # version will be removed)
