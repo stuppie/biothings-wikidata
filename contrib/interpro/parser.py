@@ -63,7 +63,7 @@ def parse_protein_ipr(data_folder, ipr_items):
     p = subprocess.Popen(["zcat", file_path], stdout=subprocess.PIPE).stdout
     d = {}
     p2ipr = map(lambda x: x.decode('utf-8').rstrip().split('\t'), p)
-    for key, lines in tqdm(groupby(p2ipr, key=lambda x: x[0]), total=51536456):
+    for key, lines in tqdm(groupby(p2ipr, key=lambda x: x[0]), total=51536456, miniters=1000000):
         # the total is just for a time estimate. Nothing bad happens if the total is wrong
         protein = []
         for line in lines:

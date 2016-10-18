@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 
 import sys
-
 import biothings
 import config
-
 biothings.config_for_app(config)
-
 import biothings.dataload.uploader
-
 s = biothings.dataload.uploader.SourceManager()
 
 
 def main(source):
     s.register_source("contrib.interpro.uploader")
-    # s.register_source("contrib.interpro.uploader_protein")
+    s.register_source("contrib.interpro.uploader_protein")
     s.register_source("contrib.interpro.uploader_dbinfo")
     s.upload_src(source)
 

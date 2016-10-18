@@ -12,14 +12,21 @@ import os
 import os.path
 import sys
 import time
+from subprocess import Popen
 from subprocess import STDOUT, check_output
 
 import biothings
+import dispatch
 from biothings.utils.common import safewfile, timesofar
 from biothings.utils.mongo import get_src_dump
 
 import config
+from config import DATA_WWW_ROOT_URL, DISPATCHER_SLEEP_TIME
 
+try:
+    from biothings.utils.hipchat import hipchat_msg
+except:
+    hipchat_msg = None
 biothings.config_for_app(config)
 src_dump = get_src_dump()
 
@@ -28,7 +35,6 @@ def check_mongo():
     """Check for "pending_to_upload" flag in src_dump collection.
        And return a list of sources should be uploaded.
     """
-    # filter some more: _id is supposed to be a user-defined string, not an ObjectId()
     src_dump = get_src_dump()
     return [src['_id'] for src in src_dump.find({'pending_to_upload': True}) if type(src['_id']) == str]
 
@@ -36,17 +42,34 @@ def check_mongo():
 def dispatch_src_upload(src):
     src_doc = src_dump.find_one({'_id': src})
     datadump_logfile = src_doc.get('logfile', '')
-    # TODO: logfile will be used by logging module, does the following interfer with it ?
+    timestamp = time.strftime('%Y%m%d')
     if datadump_logfile:
-        upload_logfile = os.path.join(os.path.split(datadump_logfile)[0], '{}_upload.log'.format(src))
+        upload_logfile = os.path.join(os.path.split(datadump_logfile)[0], '{}_{}_upload.log'.format(src, timestamp))
     else:
-        upload_logfile = os.path.join(config.DATA_ARCHIVE_ROOT, '{}_upload.log'.format(src))
-
-    log_f, logfile = safewfile(upload_logfile, prompt=False, default='O')
-    p = Popen(['python', '-u', "upload.py", src],
-              stdout=log_f, stderr=STDOUT, cwd=config.APP_PATH)
+        upload_logfile = os.path.join(config.DATA_ARCHIVE_ROOT, '{}_{}_upload.log'.format(src, timestamp))
+    log_f, logfile = safewfile(upload_logfile, prompt=False, default='a')
+    p = Popen(['python', '-u', "upload.py", src], stdout=log_f, stderr=STDOUT, cwd=config.APP_PATH)
     p.log_f = log_f
     return p
+
+
+def handle_interpro_bot():
+    conf = "interpro"
+    t0 = time.time()
+    p = Popen(['python', 'bot.py', '--log_dir', config.DATA_ARCHIVE_ROOT],
+              cwd=os.path.join(config.APP_PATH, "contrib/interpro"))
+    returncode = p.wait()
+    t = timesofar(t0)
+    if returncode == 0:
+        msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(conf, returncode, t)
+        color = "green"
+    else:
+        msg = 'Dispatcher:  "{}" builder failed with code {} (time: {})'.format(conf, returncode, t)
+        color = "red"
+    print(msg)
+    if hipchat_msg:
+        msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL, conf)
+        hipchat_msg(msg, message_format='html', color=color)
 
 
 def mark_upload_started(src):
@@ -54,8 +77,7 @@ def mark_upload_started(src):
     # keep it here as well as the time required for the uploader to unset it, dispatcher
     # may decide to run the same uploader again as the flag is still there. Ideally
     # this shouldn't be needed there
-    src_dump.update({'_id': src}, {"$unset": {'pending_to_upload': "",
-                                              'upload': ""}})
+    src_dump.update({'_id': src}, {"$unset": {'pending_to_upload': "", 'upload': ""}})
 
 
 def get_process_info(running_processes):
@@ -71,17 +93,6 @@ def get_process_info(running_processes):
                 pid = line.split()[1]
                 output[i] = '    {:<10}'.format(name_d.get(pid, '')) + output[i]
     return '\n'.join(output)
-
-
-from subprocess import Popen
-import dispatch
-
-from config import DATA_WWW_ROOT_URL, DISPATCHER_SLEEP_TIME
-
-try:
-    from biothings.utils.hipchat import hipchat_msg
-except:
-    hipchat_msg = None
 
 
 class DocDispatcher(object):
@@ -130,7 +141,11 @@ class DocDispatcher(object):
                 p.log_f.close()
 
                 if returncode == 0:
-                    msg = 'Dispatcher:  "{}" uploader finished successfully with code {} (time: {})'.format(src, returncode, timesofar(p.t0,t1=t1))
+                    msg = 'Dispatcher:  "{}" uploader finished successfully with code {} (time: {})'.format(src,
+                                                                                                            returncode,
+                                                                                                            timesofar(
+                                                                                                                p.t0,
+                                                                                                                t1=t1))
                     print(msg)
                     if hipchat_msg:
                         msg += '<a href="{}/log/dump/{}">dump log</a>'.format(DATA_WWW_ROOT_URL, src)
@@ -154,26 +169,6 @@ class DocDispatcher(object):
 
     def handle_src_upload_failed(self, src_name, **kwargs):
         print("upload failed: {}".format(src_name))
-
-    def handle_interpro_bot(self):
-        # cleanup src and target collections
-        # src_clean_archives(noconfirm=True)
-        # target_clean_collections(noconfirm=True)
-        conf = "interpro"
-        t0 = time.time()
-        p = Popen(['python', 'bot.py'], cwd=os.path.join(config.APP_PATH, "contrib/interpro"))
-        returncode = p.wait()
-        t = timesofar(t0)
-        if returncode == 0:
-            msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(conf, returncode, t)
-            color = "green"
-        else:
-            msg = 'Dispatcher:  "{}" builder failed with code {} (time: {})'.format(conf, returncode, t)
-            color = "red"
-        print(msg)
-        if hipchat_msg:
-            msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL, conf)
-            hipchat_msg(msg, message_format='html', color=color)
 
     def run(self, args=[]):
         _flag = len(args) == 2

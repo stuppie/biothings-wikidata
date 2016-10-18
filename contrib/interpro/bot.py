@@ -8,26 +8,29 @@ http://tinyurl.com/hdr3jnl
 
 import argparse
 import logging
+import os
+from datetime import datetime
 
 from ProteinBoxBot_Core import PBB_Core, PBB_login
 from ProteinBoxBot_Core.PBB_Core import WDApiError
-from interproscan.WDHelper import WDHelper
+from WDHelper import WDHelper
 from local import WDUSER, WDPASS
 
 from pymongo import MongoClient
 from tqdm import tqdm
 
+
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 info_logger = logging.getLogger('info_logger')
 info_logger.setLevel(logging.INFO)
-info_handler = logging.FileHandler('info_logger.log')
-info_handler.setFormatter(formatter)
-info_logger.addHandler(info_handler)
+info_logger.addHandler(console)
 
+exc_formatter = logging.Formatter('>%(asctime)s %(levelname)s %(message)s')
 exc_logger = logging.getLogger('exc_logger')
-exc_handler = logging.FileHandler('exc_logger.log')
-exc_handler.setFormatter(formatter)
-exc_logger.addHandler(exc_handler)
+exc_logger.addHandler(console)
 
 interpro_version2wdid = {"59.0": "Q27135875"}  # make by hand, for now
 UNIPROT = "P352"
@@ -38,6 +41,16 @@ db = MongoClient().wikidata_src
 IPR_COLL = db.interpro
 UNIPROT_COLL = db.interpro_protein
 DBINFO_COLL = db.dbinfo
+
+
+def setup_logging(log_dir, date):
+    info_handler = logging.FileHandler(os.path.join(log_dir, 'interpro_{}_wikidata_info.log'.format(date)))
+    info_handler.setFormatter(formatter)
+    info_logger.addHandler(info_handler)
+
+    exc_handler = logging.FileHandler(os.path.join(log_dir, 'interpro_{}_wikidata_exc.log'.format(date)))
+    exc_handler.setFormatter(exc_formatter)
+    exc_logger.addHandler(exc_handler)
 
 
 class IPRTerm:
@@ -187,17 +200,19 @@ class IPRTerm:
 
 
 def create_interpro_items():
-    ## insert all interpro items
+    # insert all interpro items
+    info_logger.info("run_start_insert_items xxx xxx")
     coll = IPR_COLL
     ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
     cursor = coll.find(no_cursor_timeout=True)
-    for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
+    for n, doc in tqdm(enumerate(cursor), total=cursor.count(), miniters=1000):
         term = IPRTerm(**doc, interpro_version=ipr_version)
         term.create_item()
     cursor.close()
 
 
 def create_ipr_relationships():
+    info_logger.info("run_start_item_rel xxx xxx")
     coll = IPR_COLL
     ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
     terms = []
@@ -205,17 +220,18 @@ def create_ipr_relationships():
         term = IPRTerm(**doc, interpro_version=ipr_version)
         terms.append(term)
     IPRTerm.refresh_ipr_wd()
-    for term in tqdm(terms):
+    for term in tqdm(terms, miniters=1000):
         term.create_relationships()
 
 
 def create_uniprot_relationships():
+    info_logger.info("run_start_prot_rel xxx xxx")
     wc = 0
     coll = UNIPROT_COLL
     # only do uniprot proteins that are already in wikidata
     uniprot2wd = WDHelper().id_mapper(UNIPROT)
     cursor = coll.find({'_id': {'$in': list(uniprot2wd.keys())}}, no_cursor_timeout=True)
-    for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
+    for n, doc in tqdm(enumerate(cursor), total=cursor.count(), miniters=1000):
         uniprot_id = doc['_id']
         ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
         statements = []
@@ -253,14 +269,13 @@ def create_uniprot_relationships():
             try:
                 wd_item.write(IPRTerm.login_instance, edit_summary="add/update family and/or domains")
             except Exception as e:
-                exc_logger.exception("write_error " + uniprot_id + " " + wd_item.wd_item_id + "\n" + str(e))
+                exc_logger.exception(" ".join(["write_error", uniprot_id, wd_item.wd_item_id]) + "\n" + str(e))
                 continue
                 # raise e
             if create_new_item:
-                info_logger.info("item_created " + uniprot_id + " " + wd_item.wd_item_id)
+                info_logger.info(" ".join(["item_created", uniprot_id, wd_item.wd_item_id]))
             else:
-                info_logger.info("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
-                print("item_updated " + uniprot_id + " " + wd_item.wd_item_id)
+                info_logger.info(" ".join(["item_updated", uniprot_id, wd_item.wd_item_id]))
     cursor.close()
 
 
@@ -269,7 +284,14 @@ if __name__ == "__main__":
     parser.add_argument('--items', action='store_true', help='create/update interpro items')
     parser.add_argument('--rel', action='store_true', help='add inter-interpro relationships')
     parser.add_argument('--uniprot', action='store_true', help='add uniprot/protein to interpro relationships')
+    parser.add_argument('--log_dir', help='directory to store logs', type=str)
+    parser.add_argument('--date', help='log date', type=str)
     args = parser.parse_args()
+
+    log_dir = args.log_dir if args.log_dir else os.getcwd()
+    d = datetime.now()
+    date = args.date if args.date else "".join(map(str,[d.year, d.month, d.day]))
+    setup_logging(log_dir, date)
 
     if args.items:
         create_interpro_items()
