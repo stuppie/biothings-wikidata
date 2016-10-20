@@ -11,6 +11,7 @@ def parse_info(file_path):
     df = pd.read_csv(file_path, sep=" ", names=['date','time','level','msg','id','wdid'])
     item_updated = len(df.query("msg == 'item_updated'"))
     item_created = len(df.query("msg == 'item_created'"))
+    return item_updated, item_created
 
 
 def parse_exc(file_path):
@@ -29,3 +30,4 @@ def parse_exc(file_path):
     """
     lines = [line[1:] for line in open(file_path).readlines() if line.startswith(">")]
     df = pd.read_csv(StringIO("\n".join(lines)), sep=" ", names=['date','time','level','msg','id','wdid'])
+    return df

@@ -53,11 +53,10 @@ def dispatch_src_upload(src):
     return p
 
 
-def handle_interpro_bot():
-    conf = "interpro"
+def handle_wikidata_bot(conf):
     t0 = time.time()
-    p = Popen(['python', 'bot.py', '--log_dir', config.DATA_ARCHIVE_ROOT],
-              cwd=os.path.join(config.APP_PATH, "contrib/interpro"))
+    p = Popen(['python3', 'bot.py', '--log_dir', config.DATA_ARCHIVE_ROOT],
+              cwd=os.path.join(config.APP_PATH, "contrib", conf))
     returncode = p.wait()
     t = timesofar(t0)
     if returncode == 0:
@@ -164,8 +163,7 @@ class DocDispatcher(object):
 
     def handle_src_upload_success(self, src_name, **kwargs):
         print("upload success: {}".format(src_name))
-        if src_name == 'interpro':
-            self.handle_interpro_bot()
+        handle_wikidata_bot(src_name)
 
     def handle_src_upload_failed(self, src_name, **kwargs):
         print("upload failed: {}".format(src_name))
