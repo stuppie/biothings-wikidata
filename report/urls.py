@@ -19,12 +19,17 @@ from django.contrib import admin
 from django.conf.urls import url, include
 from rest_framework import routers
 from rest_framework.routers import DefaultRouter
+from django.views.generic.base import TemplateView
+
 
 from report import views
 
 router = DefaultRouter()
 router.register(r'botrun', views.BotRunViewSet)
+router.register(r'logs', views.LogViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
+    url(r'^botrun/(?P<pk>[^/.]+)/summary', views.botrun_summary),
+    url(r'^chart/$', TemplateView.as_view(template_name='chart.html'), name="chart"),
 ]
