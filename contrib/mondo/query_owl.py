@@ -27,7 +27,9 @@ def do_queries(g, ids):
     d = []
     for id in tqdm(ids):
         q = prepareQuery("""PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        select * where { ?s (owl:equivalentClass|^owl:equivalentClass)* ?x .}""")
+        select * where {
+            ?s (owl:equivalentClass|^owl:equivalentClass)* ?x .
+        }""")
         result = g.query(q, initBindings={'s': URIRef(id)})
         equiv_class = [x.split("/")[-1] for x in set(chain(*list(result)))]
         d.append({'_id': id.split("/")[-1].replace("_", ":"), 'equivalent_class': [x.replace("_", ":") for x in equiv_class]})
