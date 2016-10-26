@@ -13,6 +13,7 @@ def main(source):
     s.register_source("contrib.interpro.uploader_protein")
     s.register_source("contrib.interpro.uploader_dbinfo")
     s.register_source("contrib.mondo.uploader")
+    s.register_source("contrib.mygene.yeast_uploader")
     s.upload_src(source)
 
 

@@ -5,38 +5,40 @@ https://bitbucket.org/sulab/wikidatabots/raw/c448a375f97daf279bec71fd800d551dede
 example microbial protein:
 https://www.wikidata.org/wiki/Q22291171
 """
+import logging
 from collections import defaultdict
+from datetime import datetime
 
 from ProteinBoxBot_Core import PBB_login, PBB_Core
 from tqdm import tqdm
 
-from HelperBot import strain_info, go_props, go_evidence_codes, make_reference
+from HelperBot import strain_info, go_props, go_evidence_codes, make_reference, setup_logging, log
 from WDHelper import WDHelper
 from local import WDUSER, WDPASS
 
+__metadata__ = {'bot_name': 'YeastBot',
+                'run_name': None,
+                'run_id': None,
+                'domain': 'protein',
+                'log_name': None}
 
-def gene_encodes_statement(record, gene_qid, protein_qid, retrieved, login):
+ENTREZ_PROP = "P351"
+
+def gene_encodes_statement(record, gene_qid, protein_qid, retrieved, logger, login):
     # ncbi_gene_reference = make_reference('ncbi_gene', 'ncbi_gene', str(record['entrezgene']), retrieved)
     ensembl_protein_reference = make_reference('ensembl', 'ensemble_protein', record['ensembl']['protein'], retrieved)
 
     # gene
     gene_encodes = PBB_Core.WDItemID(value=protein_qid, prop_nr='P688', references=[ensembl_protein_reference])
-    gene_id = PBB_Core.WDItemID(value=gene_qid, prop_nr='P351')
 
-    wd_item_protein = PBB_Core.WDItemEngine(item_name='', domain='genes', data=[gene_id],
-                                            fast_run=True, search_only=True,
+    wd_item_protein = PBB_Core.WDItemEngine(wd_item_id=gene_qid, domain='genes', data=[gene_encodes],
+                                            fast_run=True,
                                             fast_run_base_filter={'P351': '', 'P703': strain_info['organism_wdid']})
-    wd_item_protein.update(data=[gene_encodes])
 
     if wd_item_protein.create_new_item:
         raise ValueError("nooo!!")
-    try:
-        wd_item_protein.write(login=login)
-        msg = "CREATE" if wd_item_protein.create_new_item else "UPDATE"
-        log('INFO', record['_id'], '', msg, wd_item_protein.wd_item_id)
-    except Exception as e:
-        print(e)
-        log('ERROR', record['_id'], type(e), str(e), wd_item_protein.wd_item_id)
+
+    try_write(wd_item_protein, record['_id'], logger, login)
 
 
 def pre_filter_go(record):
@@ -62,7 +64,7 @@ def pre_filter_go(record):
         record['go_processed'][level] = dict(go_processed)
 
 
-def protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, login):
+def protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, logger, login):
     """
     generate pbb_core item object
     """
@@ -103,37 +105,48 @@ def protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, logi
     statements.append(PBB_Core.WDString(value=record['refseq']['protein'], prop_nr='P637',
                                         references=[ensembl_protein_reference]))
     # set uniprot id
-    statements.append(PBB_Core.WDString(value=record['uniprot']['Swiss-Prot'], prop_nr='P352',
-                                        references=[ensembl_protein_reference]))
+    swissprot = record['uniprot']['Swiss-Prot']
+    swissprots = [swissprot] if isinstance(swissprot, str) else swissprot
+    for swissprot in swissprots:
+        statements.append(PBB_Core.WDString(value=swissprot, prop_nr='P352',
+                                            references=[ensembl_protein_reference]))
     # set ensembl protein id
     statements.append(PBB_Core.WDString(value=str(record['ensembl']['protein']), prop_nr='P705',
                                         references=[ensembl_protein_reference]))
-
-    wd_item_protein = PBB_Core.WDItemEngine(item_name=item_name, domain='proteins', data=statements,
-                                            append_value=['P279'],
-                                            fast_run=True,
-                                            fast_run_base_filter={'P352': '', 'P703': strain_info['organism_wdid']})
-    wd_item_protein.set_label(item_name)
-    wd_item_protein.set_description(item_description, lang='en')
-    wd_item_protein.set_aliases([record['symbol'], record['locus_tag']])
-
     try:
-        wd_item_protein.write(login=login)
-        msg = "CREATE" if wd_item_protein.create_new_item else "UPDATE"
-        log('INFO', record['_id'], '', msg, wd_item_protein.wd_item_id)
+        wd_item_protein = PBB_Core.WDItemEngine(item_name=item_name, domain='proteins', data=statements,
+                                                append_value=['P279'],
+                                                fast_run=True,
+                                                fast_run_base_filter={'P352': '', 'P703': strain_info['organism_wdid']})
+        wd_item_protein.set_label(item_name)
+        wd_item_protein.set_description(item_description, lang='en')
+        wd_item_protein.set_aliases([record['symbol'], record['locus_tag']])
     except Exception as e:
         print(e)
-        log('ERROR', record['_id'], type(e), str(e), wd_item_protein.wd_item_id)
+        log(logger, logging.ERROR, record['_id'], str(e), None, ENTREZ_PROP)
+        return
+
+    try_write(wd_item_protein, record['_id'], logger, login)
 
 
-def log(level, main_data_id, exception_type, message, wd_id):
-    PBB_Core.WDItemEngine.log(level,
-                              '{main_data_id}, "{exception_type}", "{message}", {wd_id}'.format(
-                                  main_data_id=main_data_id, exception_type=exception_type, message=message,
-                                  wd_id=wd_id))
+def try_write(wd_item, record_id, logger, login):
+    if wd_item.require_write:
+        if wd_item.create_new_item:
+            msg = "CREATE"
+        else:
+            msg = "UPDATE"
+    else:
+        msg = "SKIP"
+
+    try:
+        wd_item.write(login=login)
+        log(logger, logging.INFO, record_id, msg, wd_item.wd_item_id, ENTREZ_PROP)
+    except Exception as e:
+        print(e)
+        log(logger, logging.ERROR, record_id, str(e), wd_item.wd_item_id, ENTREZ_PROP)
 
 
-def run(records, retrieved):
+def run(records, retrieved, logger):
     login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
 
     # get all entrez gene id -> wdid mappings, where found in taxon is this strain
@@ -143,35 +156,63 @@ def run(records, retrieved):
     go_wdid_mapping = WDHelper().id_mapper("P686")
 
     for n, record in tqdm(enumerate(records), desc=strain_info['organism_name'], total=records.count()):
-        gene_qid = gene_wdid_mapping[str(record['entrezgene'])]
-        protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, login)
+        entrez_gene = str(record['entrezgene'])
+        if entrez_gene not in gene_wdid_mapping:
+            log(logger, logging.ERROR, record['_id'], "gene_not_found", None, ENTREZ_PROP)
+            continue
+        gene_qid = gene_wdid_mapping[entrez_gene]
+        protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, logger, login)
+
+    records.close()
+
+
+def run_encodes(records, retrieved, logger):
+    login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
+
+    # get all entrez gene id -> wdid mappings, where found in taxon is this strain
+    gene_wdid_mapping = WDHelper().id_mapper("P351", (("P703", strain_info['organism_wdid']),))
 
     # get all ensembl gene id -> wdid mappings, where found in taxon is this strain
     protein_wdid_mapping = WDHelper().id_mapper("P705", (("P703", strain_info['organism_wdid']),))
 
     for n, record in tqdm(enumerate(records), desc=strain_info['organism_name'], total=records.count()):
-        gene_qid = gene_wdid_mapping[str(record['entrezgene'])]
-        protein_qid = protein_wdid_mapping[record['ensemble']['protein']]
-        gene_encodes_statement(record, gene_qid, protein_qid, retrieved, login)
+        entrez_gene = str(record['entrezgene'])
+        if entrez_gene not in gene_wdid_mapping:
+            log(logger, logging.ERROR, record['_id'], "gene_not_found", None, ENTREZ_PROP)
+            continue
+        gene_qid = gene_wdid_mapping[entrez_gene]
+        protein_qid = protein_wdid_mapping[record['ensembl']['protein']]
+        gene_encodes_statement(record, gene_qid, protein_qid, retrieved, logger, login)
+
+    records.close()
 
 
-def main(log_dir=None):
+def main(log_dir="./logs", run_id=None):
     import biothings
     import config
     from biothings.utils.mongo import get_src_db, get_src_dump
 
     biothings.config_for_app(config)
-    if log_dir:
-        PBB_Core.WDItemEngine.log_file_path = log_dir
+    if run_id is None:
+        run_id = datetime.now().strftime('%Y%m%d_%H:%M')
+    __metadata__['run_id'] = run_id
 
     collection = get_src_db().yeast
-
     src_dump = get_src_dump()
     src_doc = src_dump.find_one({'_id': 'mygene'})
     retrieved = src_doc["release"]
-    print(retrieved)
 
-    run(collection.find({'type_of_gene': 'protein-coding', '_id': '856785'}), retrieved)
+    __metadata__['run_name'] = "protein"
+    __metadata__['log_name'] = "_".join([__metadata__['bot_name'], __metadata__['run_name']])
+    logger = setup_logging(log_dir=log_dir, metadata=__metadata__)
+    records = collection.find({'type_of_gene': 'protein-coding'}, no_cursor_timeout=True)
+    run(records, retrieved, logger)
+
+    __metadata__['run_name'] = "encodes"
+    __metadata__['log_name'] = "_".join([__metadata__['bot_name'], __metadata__['run_name']])
+    logger = setup_logging(log_dir=log_dir, metadata=__metadata__)
+    records = collection.find({'type_of_gene': 'protein-coding'}, no_cursor_timeout=True)
+    run_encodes(records, retrieved, logger)
 
 
 if __name__ == "__main__":

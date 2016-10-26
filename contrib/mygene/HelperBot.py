@@ -1,3 +1,8 @@
+import json
+import logging
+import os
+import time
+
 from ProteinBoxBot_Core import PBB_Core
 
 strain_info = {
@@ -6,23 +11,24 @@ strain_info = {
     "organism_wdid": "Q27510868",
     # strain-specific chromosome to Refseq Genome ID mapping
     "chrom_genomeid_map": {
-     'I': 'NC_001133.9',
-     'II': 'NC_001134.8',
-     'III': 'NC_001135.5',
-     'IV': 'NC_001136.10',
-     'IX': 'NC_001141.2',
-     'MT': 'NC_001224.1',
-     'V': 'NC_001137.3',
-     'VI': 'NC_001138.5',
-     'VII': 'NC_001139.9',
-     'VIII': 'NC_001140.6',
-     'X': 'NC_001142.9',
-     'XI': 'NC_001143.9',
-     'XII': 'NC_001144.5',
-     'XIII': 'NC_001145.3',
-     'XIV': 'NC_001146.8',
-     'XV': 'NC_001147.6',
-     'XVI': 'NC_001148.4'
+        'I': 'NC_001133.9',
+        'II': 'NC_001134.8',
+        'III': 'NC_001135.5',
+        'IV': 'NC_001136.10',
+        'IX': 'NC_001141.2',
+        'MT': 'NC_001224.1',
+        'Mito': 'NC_001224.1',  # ensembl calls it Mito (from mygene)
+        'V': 'NC_001137.3',
+        'VI': 'NC_001138.5',
+        'VII': 'NC_001139.9',
+        'VIII': 'NC_001140.6',
+        'X': 'NC_001142.9',
+        'XI': 'NC_001143.9',
+        'XII': 'NC_001144.5',
+        'XIII': 'NC_001145.3',
+        'XIV': 'NC_001146.8',
+        'XV': 'NC_001147.6',
+        'XVI': 'NC_001148.4'
     }
 }
 
@@ -55,6 +61,7 @@ go_evidence_codes = {
     'IMR': 'Q23190842'
 }
 
+
 def make_reference(source, id_prop, identifier, retrieved):
     source_items = {'uniprot': 'Q905695',
                     'ncbi_gene': 'Q20641742',
@@ -76,3 +83,48 @@ def make_reference(source, id_prop, identifier, retrieved):
         PBB_Core.WDString(value=str(identifier), prop_nr=prop_ids[id_prop], is_reference=True),  # Link to ID
         PBB_Core.WDTime(retrieved.strftime('+%Y-%m-%dT00:00:00Z'), prop_nr='P813', is_reference=True)]
     return reference
+
+
+class FormatterWithHeader(logging.Formatter):
+    # http://stackoverflow.com/questions/33468174/write-header-to-a-python-log-file-but-only-if-a-record-gets-written
+    def __init__(self, header, **kwargs):
+        super().__init__(**kwargs)
+        self.header = header
+        # Override the normal format method
+        self.format = self.first_line_format
+
+    def first_line_format(self, record):
+        # First time in, switch back to the normal format function
+        self.format = super().format
+        return self.header + "\n" + self.format(record)
+
+
+def setup_logging(log_dir, metadata):
+    log_name = metadata['log_name']
+    run_id = metadata['run_id']
+    logger = logging.getLogger(log_name)
+    logger.setLevel(logging.INFO)
+    if not run_id:
+        run_id = time.strftime('%Y%m%d_%H:%M', time.localtime())
+    log_file_name = os.path.join(log_dir, '{}-{}.log'.format(log_name, run_id))
+
+    # prepend header to file
+    header = "#" + json.dumps(metadata)
+
+    file_handler = logging.FileHandler(log_file_name, mode='a')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(FormatterWithHeader(header, fmt='%(levelname)s,%(asctime)s,%(message)s',
+                                                  datefmt='%m/%d/%Y %H:%M:%S'))
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+def log(logger, level, main_data_id, message, wd_id, external_id_prop=None):
+    # escape double quotes and quote string with commas,
+    # so it can be read by pd.read_csv(fp, escapechar='\\')
+    message = message.replace("\"", "\\\"")
+    message = "\"" + message + "\"" if "," in message else message
+    logger.log(level=level, msg='{main_data_id},{message},{wd_id},{prop}'.format(
+        main_data_id=main_data_id, message=message,
+        wd_id=wd_id, prop=external_id_prop))
