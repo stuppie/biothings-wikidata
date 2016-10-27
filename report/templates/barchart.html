@@ -30,7 +30,7 @@
 
             for (i = 0; i < results.length; i++){
                 result = results[i];
-                row = [result.bot_name + "\n" + result.run_name, result.actions.CREATE, result.actions.UPDATE, result.actions.SKIP, result.actions.ERROR];
+                row = [result.bot_name + "\n" + result.run_name + "\n" + result.run_id, result.actions.CREATE, result.actions.UPDATE, result.actions.SKIP, result.actions.ERROR];
                 data.push(row);
             }
             console.log(data);
@@ -38,7 +38,7 @@
 
             // Instantiate and draw our chart, passing in some options.
             var chart = new google.charts.Bar(document.getElementById('chart_div'));
-            chart.draw(datatable, {width: 600, height: 640});
+            chart.draw(datatable, {width: 1200, height: 640});
         }
     </script>
 </head>

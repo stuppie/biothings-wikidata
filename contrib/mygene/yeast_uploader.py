@@ -2,7 +2,7 @@ import biothings.dataload.uploader as uploader
 import requests
 
 """
-Saccharomyces cerevisiae S288c
+Saccharomyces cerevisiae S288c: 559292
 """
 
 
@@ -27,6 +27,6 @@ class YeastUploader(uploader.BaseSourceUploader):
         return mygeneinfo_query(self.tax_id)
 
     @classmethod
-    def get_mapping(self):
+    def get_mapping(cls):
         return {}
 

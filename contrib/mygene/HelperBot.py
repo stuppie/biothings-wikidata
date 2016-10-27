@@ -85,46 +85,13 @@ def make_reference(source, id_prop, identifier, retrieved):
     return reference
 
 
-class FormatterWithHeader(logging.Formatter):
-    # http://stackoverflow.com/questions/33468174/write-header-to-a-python-log-file-but-only-if-a-record-gets-written
-    def __init__(self, header, **kwargs):
-        super().__init__(**kwargs)
-        self.header = header
-        # Override the normal format method
-        self.format = self.first_line_format
-
-    def first_line_format(self, record):
-        # First time in, switch back to the normal format function
-        self.format = super().format
-        return self.header + "\n" + self.format(record)
-
-
-def setup_logging(log_dir, metadata):
-    log_name = metadata['log_name']
-    run_id = metadata['run_id']
-    logger = logging.getLogger(log_name)
-    logger.setLevel(logging.INFO)
-    if not run_id:
-        run_id = time.strftime('%Y%m%d_%H:%M', time.localtime())
-    log_file_name = os.path.join(log_dir, '{}-{}.log'.format(log_name, run_id))
-
-    # prepend header to file
-    header = "#" + json.dumps(metadata)
-
-    file_handler = logging.FileHandler(log_file_name, mode='a')
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(FormatterWithHeader(header, fmt='%(levelname)s,%(asctime)s,%(message)s',
-                                                  datefmt='%m/%d/%Y %H:%M:%S'))
-    logger.addHandler(file_handler)
-
-    return logger
-
-
-def log(logger, level, main_data_id, message, wd_id, external_id_prop=None):
+def format_msg(main_data_id, message, wd_id, external_id_prop=None):
     # escape double quotes and quote string with commas,
     # so it can be read by pd.read_csv(fp, escapechar='\\')
     message = message.replace("\"", "\\\"")
     message = "\"" + message + "\"" if "," in message else message
-    logger.log(level=level, msg='{main_data_id},{message},{wd_id},{prop}'.format(
+    message = message.replace(",", "")
+    msg='{main_data_id},{message},{wd_id},{prop}'.format(
         main_data_id=main_data_id, message=message,
-        wd_id=wd_id, prop=external_id_prop))
+        wd_id=wd_id, prop=external_id_prop)
+    return msg

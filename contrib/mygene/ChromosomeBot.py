@@ -2,19 +2,20 @@
 Example mouse chromosome 5
 https://www.wikidata.org/wiki/Q15304656
 """
+import json
 from datetime import datetime
 import logging
 
 from ProteinBoxBot_Core import PBB_Core, PBB_login
 
-from HelperBot import strain_info, setup_logging, log
+from HelperBot import strain_info, format_msg
 from local import WDUSER, WDPASS
 
 __metadata__ = {'bot_name': 'YeastBot',
                 'run_name': 'chromosome',
                 'run_id': None,
                 'domain': 'chromosome',
-                'log_name': 'YeastBot_chromosome'}
+                'log_name': None}
 
 
 def make_ref(retrieved, genome_id):
@@ -26,7 +27,7 @@ def make_ref(retrieved, genome_id):
     return refs
 
 
-def make_chroms(strain_info, retrieved, logger, login):
+def make_chroms(strain_info, retrieved, login):
     chrom_wdid = {}
     for chrom_num, genome_id in strain_info['chrom_genomeid_map'].items():
 
@@ -54,13 +55,13 @@ def make_chroms(strain_info, retrieved, logger, login):
             try:
                 msg = "CREATE" if wd_item.create_new_item else "UPDATE"
                 wd_item.write(login=login)
-                log(logger, logging.INFO, genome_id, msg, wd_item.wd_item_id, external_id_prop='P2249')
+                PBB_Core.WDItemEngine.log("INFO", format_msg(genome_id, msg, wd_item.wd_item_id, external_id_prop='P2249'))
             except Exception as e:
                 print(e)
-                log(logger, logging.ERROR, genome_id, str(e), wd_item.wd_item_id, external_id_prop='P2249')
+                PBB_Core.WDItemEngine.log("ERROR", format_msg(genome_id, str(e), wd_item.wd_item_id, external_id_prop='P2249'))
         else:
             chrom_wdid[chrom_num] = wd_item.wd_item_id
-            log(logger, logging.INFO, genome_id, "SKIP", wd_item.wd_item_id, external_id_prop='P2249')
+            PBB_Core.WDItemEngine.log("INFO", format_msg(genome_id, "SKIP", wd_item.wd_item_id, external_id_prop='P2249'))
 
     return chrom_wdid
 
@@ -72,8 +73,11 @@ def main(login=None, log_dir="./logs", run_id=None):
     if run_id is None:
         run_id = datetime.now().strftime('%Y%m%d_%H:%M')
     __metadata__['run_id'] = run_id
-    logger = setup_logging(log_dir=log_dir, metadata=__metadata__)
-    chrom_wdid = make_chroms(strain_info, retrieved, logger, login)
+    log_name = 'YeastBot_chromosome-{}.log'.format(run_id)
+    __metadata__['log_name'] = log_name
+
+    PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
+    chrom_wdid = make_chroms(strain_info, retrieved, login)
     return chrom_wdid
 
 

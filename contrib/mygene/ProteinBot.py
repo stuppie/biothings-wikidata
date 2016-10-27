@@ -5,14 +5,14 @@ https://bitbucket.org/sulab/wikidatabots/raw/c448a375f97daf279bec71fd800d551dede
 example microbial protein:
 https://www.wikidata.org/wiki/Q22291171
 """
-import logging
+import json
 from collections import defaultdict
 from datetime import datetime
 
 from ProteinBoxBot_Core import PBB_login, PBB_Core
 from tqdm import tqdm
 
-from HelperBot import strain_info, go_props, go_evidence_codes, make_reference, setup_logging, log
+from HelperBot import strain_info, go_props, go_evidence_codes, make_reference, format_msg
 from WDHelper import WDHelper
 from local import WDUSER, WDPASS
 
@@ -20,9 +20,11 @@ __metadata__ = {'bot_name': 'YeastBot',
                 'run_name': None,
                 'run_id': None,
                 'domain': 'protein',
-                'log_name': None}
+                'log_name': None,
+                'release': {'mygene': None}}
 
 ENTREZ_PROP = "P351"
+
 
 def gene_encodes_statement(record, gene_qid, protein_qid, retrieved, logger, login):
     # ncbi_gene_reference = make_reference('ncbi_gene', 'ncbi_gene', str(record['entrezgene']), retrieved)
@@ -123,7 +125,7 @@ def protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, logg
         wd_item_protein.set_aliases([record['symbol'], record['locus_tag']])
     except Exception as e:
         print(e)
-        log(logger, logging.ERROR, record['_id'], str(e), None, ENTREZ_PROP)
+        PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id'], str(e), None, ENTREZ_PROP))
         return
 
     try_write(wd_item_protein, record['_id'], logger, login)
@@ -140,10 +142,10 @@ def try_write(wd_item, record_id, logger, login):
 
     try:
         wd_item.write(login=login)
-        log(logger, logging.INFO, record_id, msg, wd_item.wd_item_id, ENTREZ_PROP)
+        PBB_Core.WDItemEngine.log("INFO", format_msg(record_id, msg, wd_item.wd_item_id, ENTREZ_PROP))
     except Exception as e:
         print(e)
-        log(logger, logging.ERROR, record_id, str(e), wd_item.wd_item_id, ENTREZ_PROP)
+        PBB_Core.WDItemEngine.log("ERROR", format_msg(record_id, str(e), wd_item.wd_item_id, ENTREZ_PROP))
 
 
 def run(records, retrieved, logger):
@@ -158,7 +160,7 @@ def run(records, retrieved, logger):
     for n, record in tqdm(enumerate(records), desc=strain_info['organism_name'], total=records.count()):
         entrez_gene = str(record['entrezgene'])
         if entrez_gene not in gene_wdid_mapping:
-            log(logger, logging.ERROR, record['_id'], "gene_not_found", None, ENTREZ_PROP)
+            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id'], "gene_not_found", None, ENTREZ_PROP))
             continue
         gene_qid = gene_wdid_mapping[entrez_gene]
         protein_item(record, strain_info, gene_qid, go_wdid_mapping, retrieved, logger, login)
@@ -178,7 +180,7 @@ def run_encodes(records, retrieved, logger):
     for n, record in tqdm(enumerate(records), desc=strain_info['organism_name'], total=records.count()):
         entrez_gene = str(record['entrezgene'])
         if entrez_gene not in gene_wdid_mapping:
-            log(logger, logging.ERROR, record['_id'], "gene_not_found", None, ENTREZ_PROP)
+            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id'], "gene_not_found", None, ENTREZ_PROP))
             continue
         gene_qid = gene_wdid_mapping[entrez_gene]
         protein_qid = protein_wdid_mapping[record['ensembl']['protein']]
@@ -202,15 +204,19 @@ def main(log_dir="./logs", run_id=None):
     src_doc = src_dump.find_one({'_id': 'mygene'})
     retrieved = src_doc["release"]
 
+    __metadata__['run_id'] = run_id
+    log_name = 'YeastBot_protein-{}.log'.format(run_id)
+    __metadata__['log_name'] = log_name
     __metadata__['run_name'] = "protein"
-    __metadata__['log_name'] = "_".join([__metadata__['bot_name'], __metadata__['run_name']])
-    logger = setup_logging(log_dir=log_dir, metadata=__metadata__)
+    __metadata__['release']['mygene'] = retrieved.strftime('%Y%m%d_%H:%M')
+    logger = PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
     records = collection.find({'type_of_gene': 'protein-coding'}, no_cursor_timeout=True)
     run(records, retrieved, logger)
 
     __metadata__['run_name'] = "encodes"
-    __metadata__['log_name'] = "_".join([__metadata__['bot_name'], __metadata__['run_name']])
-    logger = setup_logging(log_dir=log_dir, metadata=__metadata__)
+    log_name = 'YeastBot_encodes-{}.log'.format(run_id)
+    __metadata__['log_name'] = log_name
+    logger = PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
     records = collection.find({'type_of_gene': 'protein-coding'}, no_cursor_timeout=True)
     run_encodes(records, retrieved, logger)
 
