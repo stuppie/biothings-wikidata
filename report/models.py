@@ -3,17 +3,17 @@ from django.db import models
 
 class Person(models.Model):
     name = models.CharField(max_length=64, primary_key=True)
-    email = models.CharField(max_length=64, blank=True, null=True)
+    email = models.CharField(max_length=64, null=True)
 
     def __str__(self):
         return '{}'.format(self.name)
 
 
 class Source(models.Model):
-    # data source
+    # data source. e.g. Ensembl release 86
     name = models.CharField(max_length=64)
-    url = models.URLField(blank=True, null=True)
-    release = models.CharField(blank=True, max_length=64)
+    url = models.URLField(null=True)
+    release = models.CharField(null=True, max_length=64)
 
     def __str__(self):
         return '{}: {}'.format(self.name, self.release)
@@ -30,47 +30,70 @@ class Property(models.Model):
         return '{}: {}'.format(self.id, self.name)
 
 
-class Domain(models.Model):
-    # gene, protein, drug, disease, etc
+class Tag(models.Model):
+    # gene, protein, drug, disease, microbial
     name = models.CharField(max_length=64, primary_key=True)
-    properties = models.ManyToManyField(Property)
 
     def __str__(self):
         return '{}'.format(self.name)
 
 
-class Bot(models.Model):
+class Item(models.Model):
+    # Represents a wikidata item
+    id = models.CharField(max_length=16, primary_key=True)
+    name = models.CharField(max_length=64, null=True)
+
+    def __str__(self):
+        return '{}'.format(self.id)
+
+
+class Task(models.Model):
+    """
+    A task is a "bot" that operates within a certain scope of items on a specific set of properties.
+
+    e.g. A task that adds "encodes" property between microbial genes and proteins
+    name: "microbial_encodes"
+    tags: "microbial" "gene" "protein"
+    properties: [ encodes:P123 ]
+    maintainer: "GSS"
+
+    The item scope can be determined from the log files
+    """
     name = models.CharField(max_length=64, primary_key=True)
-    #data_source = models.ManyToManyField(Source)
-    domain = models.ManyToManyField(Domain)
+    tags = models.ManyToManyField(Tag)
+    properties = models.ManyToManyField(Property)
     maintainer = models.ForeignKey(Person)
 
     def __str__(self):
         return self.name
 
 
-class BotRun(models.Model):
-    bot = models.ForeignKey(Bot)
-    run_id = models.CharField(max_length=64)
-    run_name = models.CharField(max_length=64)
-    started = models.DateTimeField()
-    ended = models.DateTimeField()
-    domain = models.ForeignKey(Domain, null=True)
+class TaskRun(models.Model):
+    """
+    TaskRun: An instance of a Task that gets run
+
+    e.g.
+    task: "microbial_encodes"
+    sources: ensembl version 86
+    timestamp: 2016-10-26 11:11:11
+    run_name: (optional)
+    """
+    task = models.ForeignKey(Task)
     sources = models.ManyToManyField(Source)
+    timestamp = models.DateTimeField()
+    name = models.CharField(max_length=64)
 
     def __str__(self):
-        return '{}: {}: {}'.format(self.bot, self.run_name, self.run_id)
+        return '{}: {}: {}'.format(self.task.name, self.timestamp, self.name)
 
     class Meta:
-        unique_together = ("bot", "run_id", "run_name")
-        ordering = ("run_id",)
+        ordering = ("timestamp",)
 
 
 class Log(models.Model):
-    bot_run = models.ForeignKey(BotRun)
-    wdid = models.CharField(max_length=20)
-    time = models.DateTimeField()
-
+    task_run = models.ForeignKey(TaskRun)
+    wdid = models.ForeignKey(Item)
+    timestamp = models.DateTimeField()
     action = models.CharField(max_length=64)  # CREATE, UPDATE, ERROR
     external_id = models.CharField(max_length=255, null=True)
     external_id_prop = models.ForeignKey(Property, null=True)
@@ -78,31 +101,3 @@ class Log(models.Model):
 
     def __str__(self):
         return '{}'.format(self.wdid, self.bot_run.bot, self.action)
-
-
-"""
-Bot:
-    name: MicrobeBot
-    data_source = Entrez, Uniprot, etc. (optional)
-    domain = genes, proteins (optional)
-    maintainer = TP
-
-BotRun:
-    bot: MicrobeBot
-    run_id: 20161025 (used to link to biothings)
-    run_name: chlamydia_genes
-    (bot, run_id, run_name) are unique_together
-    started: datetime.datetime(2016, 10, 25, 11, 40, 24, 148298)
-    ended: datetime.datetime(2016, 10, 26, 11, 40, 24, 148298)
-    domain: gene (optional)
-
-Log:
-    bot_run: (MicrobeBot, 20161025, Chlamydia)
-    wdid: Q123456
-    time: datetime.datetime(2016, 10, 26, 11, 40, 24, 148298)
-    action: {CREATE, UPDATE, ERROR, etc...}
-    external_id: 856305 (optional)
-    external_id_prop: P351 (optional)
-    msg: missing stop position (optional)
-
-"""

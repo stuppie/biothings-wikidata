@@ -6,16 +6,17 @@ from .models import *
 from rest_framework import serializers
 
 
-class BotSerializer(serializers.ModelSerializer):
+class TaskSerializer(serializers.ModelSerializer):
     def to_representation(self, obj):
         return {
-            'bot_name': obj.name,
+            'name': obj.name,
             'maintainer': obj.maintainer.name,
-            'email': obj.maintainer.email
+            'email': obj.maintainer.email,
+            'tags': obj.tag.all().values_list("name", flat=True)
         }
 
     class Meta:
-        model = Bot
+        model = Task
 
 
 class SourceSerializer(serializers.ModelSerializer):
@@ -30,7 +31,7 @@ class SourceSerializer(serializers.ModelSerializer):
         model = Source
 
 
-class BotRunSerializer(serializers.ModelSerializer):
+class TaskRunSerializer(serializers.ModelSerializer):
     def to_representation(self, obj):
         response = {
             'id': obj.pk,
@@ -59,7 +60,7 @@ class BotRunSerializer(serializers.ModelSerializer):
         return response
 
     class Meta:
-        model = BotRun
+        model = TaskRun
 
 
 class LogSerializer(serializers.ModelSerializer):
