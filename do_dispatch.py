@@ -31,6 +31,8 @@ biothings.config_for_app(config)
 src_dump = get_src_dump()
 
 
+hipchat_msg = None
+
 def check_mongo():
     """Check for "pending_to_upload" flag in src_dump collection.
        And return a list of sources should be uploaded.
@@ -53,21 +55,25 @@ def dispatch_src_upload(src):
     return p
 
 
-def handle_wikidata_bot(conf):
+def handle_wikidata_bot(source):
     t0 = time.time()
+    src_doc = src_dump.find_one({'_id': source})
+    release = src_doc.get('release', None)
+    if release:
+        release = release.strftime('%Y%m%d_%H:%M')
     p = Popen(['python3', 'bot.py', '--log_dir', config.DATA_ARCHIVE_ROOT],
-              cwd=os.path.join(config.APP_PATH, "contrib", conf))
+              cwd=os.path.join(config.APP_PATH, "contrib", source))
     returncode = p.wait()
     t = timesofar(t0)
     if returncode == 0:
-        msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(conf, returncode, t)
+        msg = 'Dispatcher:  "{}" builder finished successfully with code {} (time: {})'.format(source, returncode, t)
         color = "green"
     else:
-        msg = 'Dispatcher:  "{}" builder failed with code {} (time: {})'.format(conf, returncode, t)
+        msg = 'Dispatcher:  "{}" builder failed with code {} (time: {})'.format(source, returncode, t)
         color = "red"
     print(msg)
     if hipchat_msg:
-        msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL, conf)
+        msg += '<a href="{}/log/build/{}">build log</a>'.format(DATA_WWW_ROOT_URL, source)
         hipchat_msg(msg, message_format='html', color=color)
 
 

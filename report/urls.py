@@ -31,5 +31,6 @@ router.register(r'logs', views.LogViewSet)
 urlpatterns = [
     url(r'^', include(router.urls)),
     url(r'^botrun/(?P<pk>[^/.]+)/summary', views.botrun_summary),
-    url(r'^chart/$', TemplateView.as_view(template_name='chart.html'), name="chart"),
+    url(r'^barchart/$', TemplateView.as_view(template_name='barchart.html'), name="chart"),
+    url(r'^linechart/$', TemplateView.as_view(template_name='linechart.html'), name="chart"),
 ]

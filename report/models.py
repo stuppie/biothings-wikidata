@@ -11,11 +11,15 @@ class Person(models.Model):
 
 class Source(models.Model):
     # data source
-    name = models.CharField(max_length=64, primary_key=True)
+    name = models.CharField(max_length=64)
     url = models.URLField(blank=True, null=True)
+    release = models.CharField(blank=True, max_length=64)
 
     def __str__(self):
-        return '{}'.format(self.name)
+        return '{}: {}'.format(self.name, self.release)
+
+    class Meta:
+        unique_together = ("name", "release")
 
 
 class Property(models.Model):
@@ -37,7 +41,7 @@ class Domain(models.Model):
 
 class Bot(models.Model):
     name = models.CharField(max_length=64, primary_key=True)
-    data_source = models.ManyToManyField(Source)
+    #data_source = models.ManyToManyField(Source)
     domain = models.ManyToManyField(Domain)
     maintainer = models.ForeignKey(Person)
 
@@ -52,12 +56,14 @@ class BotRun(models.Model):
     started = models.DateTimeField()
     ended = models.DateTimeField()
     domain = models.ForeignKey(Domain, null=True)
+    sources = models.ManyToManyField(Source)
 
     def __str__(self):
         return '{}: {}: {}'.format(self.bot, self.run_name, self.run_id)
 
     class Meta:
         unique_together = ("bot", "run_id", "run_name")
+        ordering = ("run_id",)
 
 
 class Log(models.Model):

@@ -1,6 +1,7 @@
 from collections import Counter
 
 from django.shortcuts import render
+from rest_framework import filters
 
 from rest_framework.views import APIView
 from rest_framework.settings import api_settings
@@ -26,6 +27,15 @@ class BotRunViewSet(viewsets.ReadOnlyModelViewSet):
         run_name = self.request.query_params.get('run_name', None)
         if run_name is not None:
             queryset = queryset.filter(run_name=run_name)
+        bot_name = self.request.query_params.get('bot_name', None)
+        if bot_name is not None:
+            queryset = queryset.filter(bot__name=bot_name)
+
+        return queryset
+
+    def filter_queryset(self, queryset):
+        queryset = super(BotRunViewSet, self).filter_queryset(queryset)
+        queryset = queryset.order_by("run_id")
         return queryset
 
 

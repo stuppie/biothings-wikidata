@@ -7,7 +7,7 @@
     <script type="text/javascript">
 
         // Load the Visualization API and the corechart package.
-        google.charts.load('current', {'packages': ['bar']});
+        google.charts.load('current', {'packages': ['corechart']});
 
         // Set a callback to run when the Google Visualization API is loaded.
         google.charts.setOnLoadCallback(drawChart);
@@ -18,7 +18,7 @@
         function drawChart() {
 
             var jsonData = $.ajax({
-              url: "http://127.0.0.1:8080/botrun/",
+              url: "http://127.0.0.1:8080/botrun/?bot_name=YeastBot&run_name=gene",
               dataType: "json",
               async: false
               });
@@ -26,19 +26,25 @@
             results = jsonData.responseJSON.results;
             console.log(results);
 
-            var data = [['Name', 'Created', 'Updated', 'Skipped', 'Errors']];
-
+            var data = new google.visualization.DataTable();
+            data.addColumn('string', "Name");
+            data.addColumn('number', "Total");
+            data.addColumn('number', "Skip");
+            data.addColumn('number', "Create");
+            data.addColumn('number', "Update");
+            data.addColumn('number', "Error");
             for (i = 0; i < results.length; i++){
                 result = results[i];
-                row = [result.bot_name + "\n" + result.run_name + "\n" + result.run_id, result.actions.CREATE, result.actions.UPDATE, result.actions.SKIP, result.actions.ERROR];
-                data.push(row);
+                result.actions.CREATE = result.actions.CREATE || 0;
+                result.actions.UPDATE = result.actions.UPDATE || 0;
+                result.actions.SKIP = result.actions.SKIP || 0;
+                result.actions.ERROR = result.actions.ERROR || 0;
+                data.addRow([result.bot_name + "-" + result.run_name + "-" + result.run_id, result.actions.__total__, result.actions.SKIP, result.actions.CREATE, result.actions.UPDATE, result.actions.ERROR]);
             }
-            console.log(data);
-            var datatable = google.visualization.arrayToDataTable(data);
 
             // Instantiate and draw our chart, passing in some options.
-            var chart = new google.charts.Bar(document.getElementById('chart_div'));
-            chart.draw(datatable, {width: 1200, height: 640});
+            var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+            chart.draw(data, {width: 1200, height: 640});
         }
     </script>
 </head>

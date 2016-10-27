@@ -18,6 +18,18 @@ class BotSerializer(serializers.ModelSerializer):
         model = Bot
 
 
+class SourceSerializer(serializers.ModelSerializer):
+    def to_representation(self, obj):
+        return {
+            'name': obj.name,
+            'url': obj.url,
+            'release': obj.release
+        }
+
+    class Meta:
+        model = Source
+
+
 class BotRunSerializer(serializers.ModelSerializer):
     def to_representation(self, obj):
         response = {
@@ -27,15 +39,23 @@ class BotRunSerializer(serializers.ModelSerializer):
             'run_name': obj.run_name,
             'maintainer': obj.bot.maintainer.name
         }
+        # get started and ended time from logs associated with this run
         logs = Log.objects.filter(bot_run__pk=obj.pk).order_by("time")
         started = logs.first().time
         ended = logs.last().time
+
+        # get counts of all actions from logs
         actions = dict(Counter(logs.values_list("action", flat=True)))
+        actions['__total__'] = sum(actions.values())
         response.update({
             "actions": actions,
             'started': started,
             'ended': ended
         })
+
+        # get sources used for this run
+        response['sources'] = SourceSerializer(obj.sources.all(), many=True).data
+
         return response
 
     class Meta:
