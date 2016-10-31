@@ -8,65 +8,8 @@ https://www.ncbi.nlm.nih.gov/genome/?term=txid559292[Organism:noexp]
 example microbial gene:
 https://www.wikidata.org/wiki/Q23162696
 
-# Example item
-gene_record = {
-    "_id": "1466404",
-    "go": {
-        "MF": {
-            "id": "GO:0003674",
-            "term": "molecular_function",
-            "evidence": "ND"
-        },
-        "BP": {
-            "id": "GO:0008150",
-            "term": "biological_process",
-            "evidence": "ND"
-        },
-        "CC": {
-            "id": "GO:0005575",
-            "term": "cellular_component",
-            "evidence": "ND"
-        }
-    },
-    "entrezgene": 1466404,
-    "ensembl": {
-        "protein": "YLL066W-B",
-        "transcript": "YLL066W-B",
-        "gene": "YLL066W-B"
-    },
-    "type_of_gene": "protein-coding",
-    "refseq": {
-        "rna": "NM_001184605",
-        "protein": "NP_878115",
-        "genomic": "NC_001144"
-    },
-    "taxid": 559292,
-    "name": "hypothetical protein",
-    "locus_tag": "YLL066W-B",
-    "accession": {
-        "rna": "NM_001184605",
-        "protein": [
-            "DAA09259",
-            "NP_878115",
-            "Q8TGJ7"
-        ],
-        "genomic": [
-            "BK006945",
-            "NC_001144"
-        ]
-    },
-    "genomic_pos": {
-        "strand": 1,
-        "end": 5775,
-        "start": 5605,
-        "chr": "XII"
-    },
-    "uniprot": {
-        "Swiss-Prot": "Q8TGJ7"
-    },
-    "SGD": "S000028672",
-    "symbol": "YLL066W-B"
-}
+
+
 
 """
 import json
@@ -76,140 +19,129 @@ from ProteinBoxBot_Core import PBB_login, PBB_Core
 from tqdm import tqdm
 
 import ChromosomeBot
-from HelperBot import strain_info, make_reference, format_msg
+from HelperBot import strain_info, make_reference, format_msg, make_ref_source, try_write
+from SourceBot import get_source_version, get_data_from_mygene
 from local import WDUSER, WDPASS
 
 ENTREZ_PROP = "P351"
 
-__metadata__ = {'bot_name': 'YeastBot',
-                'run_name': 'gene',
-                'run_id': None,
-                'domain': 'gene',
-                'release': {'mygene': None}}
+__metadata__ = {'name': 'YeastBot_Gene',
+                'maintainer': 'GSS',
+                'tags': ['yeast', 'gene'],
+                'properties': ['P703', 'P279', 'P2548', 'P351', 'P2393', 'P594', 'P644', 'P645', 'P1057']
+                }
 
+PROPS = {''}
 
-def wd_item_construction(gene_record, strain_info, chrom_wdid, retrieved, login):
+def wd_item_construction(record, strain_info, chrom_wdid, login):
     """
     generate pbb_core item object
     """
 
-    item_name = '{} {}'.format(gene_record['name'], gene_record['locus_tag'])
-    item_description = '{} gene found in {}'.format(strain_info['organism_type'], strain_info['organism_name'])
+    # If the source is "entrez", the reference identifier to be used is "entrez_gene"
+    # These are defined in HelperBot
+    source_ref_id = {'ensembl': 'ensembl_gene',
+                     'entrez': 'entrez_gene',
+                     'uniprot': 'uniprot'}
 
     def gene_item_statements():
         """
         construct list of referenced statements to past to PBB_Core Item engine
-        :return:
         """
-        # creates reference object for WD gene item claim
+        s = []
 
-        ncbi_gene_reference = make_reference('ncbi_gene', 'ncbi_gene', str(gene_record['entrezgene']), retrieved)
-        ensembl_gene_reference = make_reference('ensembl', 'ensemble_gene', gene_record['ensembl']['gene'], retrieved)
-
-        chrom_genomeid = strain_info['chrom_genomeid_map'][gene_record['genomic_pos']['chr']]
-        rs_chrom = PBB_Core.WDString(value=chrom_genomeid, prop_nr='P2249', is_qualifier=True)  # Refseq Genome ID
-
-        statements = []
-        # found in taxon
-        statements.append(PBB_Core.WDItemID(value=strain_info['organism_wdid'], prop_nr='P703',
-                                            references=[ensembl_gene_reference]))
-        # subclass of gene
-        statements.append(PBB_Core.WDItemID(value='Q7187', prop_nr='P279',
-                                            references=[ensembl_gene_reference]))
-
-        # strand orientation
-        strand_orientation = 'Q22809680' if gene_record['genomic_pos']['strand'] == 1 else 'Q22809711'
-        statements.append(PBB_Core.WDItemID(value=strand_orientation, prop_nr='P2548',
-                                            references=[ensembl_gene_reference]))
+        ############
+        # external IDs
+        ############
+        # will be used for reference statements
+        external_ids = {'entrez_gene': str(record['entrezgene']['@value']),
+                        'ensembl_gene': record['ensembl']['@value']['gene']
+                        }
 
         # entrez gene id
-        statements.append(PBB_Core.WDString(value=str(gene_record['entrezgene']), prop_nr='P351',
-                                            references=[ncbi_gene_reference]))
+        entrez_ref = make_ref_source(record['entrezgene']['@source'], 'entrez_gene', external_ids['entrez_gene'])
+        s.append(PBB_Core.WDString(external_ids['entrez_gene'], 'P351', references=[entrez_ref]))
 
-        # NCBI Locus tag
-        statements.append(PBB_Core.WDString(value=gene_record['locus_tag'], prop_nr='P2393',
-                                            references=[ncbi_gene_reference]))
         # ensembl gene id
-        statements.append(PBB_Core.WDString(value=gene_record['ensembl']['gene'], prop_nr='P594',
-                                            references=[ensembl_gene_reference]))
+        ensembl_ref = make_ref_source(record['ensembl']['@source'], 'ensembl_gene', external_ids['ensembl_gene'])
+        s.append(PBB_Core.WDString(external_ids['ensembl_gene'], 'P594', references=[ensembl_ref]))
+
+        ############
+        # statements with no referencable sources (make by hand, for now...)
+        ############
+        # subclass of gene
+        s.append(PBB_Core.WDItemID('Q7187', 'P279', references=[ensembl_ref]))
+
+        # found in taxon
+        s.append(PBB_Core.WDItemID(strain_info['organism_wdid'], 'P703', references=[ensembl_ref]))
+
+        ############
+        # genomic position: start, end, strand orientation, chromosome
+        ############
+        genomic_pos_value = record['genomic_pos']['@value']
+        genomic_pos_source = record['genomic_pos']['@source']
+        genomic_pos_id_prop = source_ref_id[genomic_pos_source['_id']]
+        genomic_pos_ref = make_ref_source(genomic_pos_source, genomic_pos_id_prop, external_ids[genomic_pos_id_prop])
+
+        # create chromosome qualifier
+        chrom_genomeid = strain_info['chrom_genomeid_map'][genomic_pos_value['chr']]
+        rs_chrom = PBB_Core.WDString(chrom_genomeid, 'P2249', is_qualifier=True)  # Refseq Genome ID
+
+        # strand orientation
+        strand_orientation = 'Q22809680' if genomic_pos_value['strand'] == 1 else 'Q22809711'
+        s.append(PBB_Core.WDItemID(strand_orientation, 'P2548', references=[genomic_pos_ref]))
         # genomic start and end
-        statements.append(PBB_Core.WDString(value=str(int(gene_record['genomic_pos']['start'])), prop_nr='P644',
-                                            references=[ensembl_gene_reference], qualifiers=[rs_chrom]))
-        statements.append(PBB_Core.WDString(value=str(int(gene_record['genomic_pos']['end'])), prop_nr='P645',
-                                            references=[ensembl_gene_reference], qualifiers=[rs_chrom]))
-
+        s.append(PBB_Core.WDString(str(int(genomic_pos_value['start'])), 'P644', references=[genomic_pos_ref], qualifiers=[rs_chrom]))
+        s.append(PBB_Core.WDString(str(int(genomic_pos_value['end'])), 'P645', references=[genomic_pos_ref], qualifiers=[rs_chrom]))
         # chromosome
-        statements.append(PBB_Core.WDItemID(chrom_wdid[gene_record['genomic_pos']['chr']], 'P1057',
-                                            references=[ensembl_gene_reference]))
-        return statements
+        s.append(PBB_Core.WDItemID(chrom_wdid[genomic_pos_value['chr']], 'P1057', references=[genomic_pos_ref]))
 
-    wd_item_gene = PBB_Core.WDItemEngine(item_name=item_name, domain='genes', data=gene_item_statements(),
+        return s
+
+    item_name = '{} {}'.format(record['name']['@value'], record['ensembl']['@value']['gene'])
+    item_description = '{} gene found in {}'.format(strain_info['organism_type'], strain_info['organism_name'])
+
+    statements = gene_item_statements()
+    wd_item_gene = PBB_Core.WDItemEngine(item_name=item_name, domain='genes', data=statements,
                                          append_value=['P279'],
-                                         fast_run=True,
+                                         fast_run=False,
                                          fast_run_base_filter={'P351': '', 'P703': strain_info['organism_wdid']})
-    # pprint.pprint(wd_item_gene.get_wd_json_representation())
     wd_item_gene.set_label(item_name)
     wd_item_gene.set_description(item_description, lang='en')
-    wd_item_gene.set_aliases([gene_record['symbol'], gene_record['locus_tag']])
+    wd_item_gene.set_aliases([record['symbol']['@value'], record['locus_tag']['@value']])
 
-    try_write(wd_item_gene, gene_record['_id'], login)
-
-
-def try_write(wd_item, record_id, login):
-    if wd_item.require_write:
-        if wd_item.create_new_item:
-            msg = "CREATE"
-        else:
-            msg = "UPDATE"
-    else:
-        msg = "SKIP"
-
-    try:
-        wd_item.write(login=login)
-        PBB_Core.WDItemEngine.log("INFO", format_msg(record_id, msg, wd_item.wd_item_id, ENTREZ_PROP))
-    except Exception as e:
-        print(e)
-        PBB_Core.WDItemEngine.log("ERROR", format_msg(record_id, str(e), wd_item.wd_item_id, ENTREZ_PROP))
+    try_write(wd_item_gene, record['_id']['@value'], ENTREZ_PROP, login)
 
 
-def run(login, gene_records, retrieved, chrom_wdid):
-    for n, record in tqdm(enumerate(gene_records), desc=strain_info['organism_name'], total=gene_records.count()):
+def run(login, gene_records, chrom_wdid):
+    for n, record in tqdm(enumerate(gene_records), desc=strain_info['organism_name']):
         if 'genomic_pos' not in record:
             # see: http://mygene.info/v3/gene/855814
-            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id'], "no_position", '', ENTREZ_PROP))
+            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "no_position", '', ENTREZ_PROP))
             continue
-        if isinstance(record['genomic_pos'], list):
+        if isinstance(record['genomic_pos']['@value'], list):
             # see: http://mygene.info/v3/gene/853483
-            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id'], "multiple_positions", '', ENTREZ_PROP))
+            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "multiple_positions", '', ENTREZ_PROP))
             continue
-        wd_item_construction(record, strain_info, chrom_wdid, retrieved, login)
-    gene_records.close()
+        wd_item_construction(record, strain_info, chrom_wdid, login)
+        return
 
 
 def main(log_dir="./logs", run_id=None):
-    import biothings
-    import config
-    from biothings.utils.mongo import get_src_db, get_src_dump
-
-    biothings.config_for_app(config)
     if run_id is None:
         run_id = datetime.now().strftime('%Y%m%d_%H:%M')
     __metadata__['run_id'] = run_id
     log_name = 'YeastBot_gene-{}.log'.format(run_id)
     __metadata__['log_name'] = log_name
+    __metadata__['release'] = get_source_version()
 
-    collection = get_src_db().yeast
-    src_dump = get_src_dump()
-    src_doc = src_dump.find_one({'_id': 'mygene'})
-    retrieved = src_doc["release"]
-    __metadata__['release']['mygene'] = retrieved.strftime('%Y%m%d_%H:%M')
-    records = collection.find({'type_of_gene': 'protein-coding'}, no_cursor_timeout=True)
+    records = get_data_from_mygene()
 
     login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
     chrom_wdid = ChromosomeBot.main(login=login, log_dir=log_dir, run_id=run_id)
 
     PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
-    run(login, records, retrieved, chrom_wdid)
+    run(login, records, chrom_wdid)
 
 
 if __name__ == "__main__":
