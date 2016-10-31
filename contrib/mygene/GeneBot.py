@@ -131,6 +131,8 @@ def main(log_dir="./logs", run_id=None):
     if run_id is None:
         run_id = datetime.now().strftime('%Y%m%d_%H:%M')
     __metadata__['run_id'] = run_id
+    __metadata__['timestamp'] = str(datetime.now())
+
     log_name = 'YeastBot_gene-{}.log'.format(run_id)
     __metadata__['log_name'] = log_name
     __metadata__['release'] = get_source_version()

@@ -25,7 +25,7 @@ from django.views.generic.base import TemplateView
 from report import views
 
 router = DefaultRouter()
-router.register(r'botrun', views.BotRunViewSet)
+router.register(r'taskrun', views.TaskRunViewSet)
 router.register(r'logs', views.LogViewSet)
 
 urlpatterns = [

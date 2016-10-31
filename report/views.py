@@ -9,32 +9,32 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import viewsets
 
-from report.models import BotRun, Bot, Log
-from report.serializers import BotSerializer, BotRunSerializer, LogSerializer
+from report.models import TaskRun, Task, Log
+from report.serializers import TaskSerializer, TaskRunSerializer, LogSerializer
 
 
-class BotViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Bot.objects.all()
-    serializer_class = BotSerializer
+class TaskViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
 
 
-class BotRunViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = BotRun.objects.all()
-    serializer_class = BotRunSerializer
+class TaskRunViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = TaskRun.objects.all()
+    serializer_class = TaskRunSerializer
 
     def get_queryset(self):
-        queryset = BotRun.objects.all()
+        queryset = TaskRun.objects.all()
         run_name = self.request.query_params.get('run_name', None)
         if run_name is not None:
             queryset = queryset.filter(run_name=run_name)
-        bot_name = self.request.query_params.get('bot_name', None)
-        if bot_name is not None:
-            queryset = queryset.filter(bot__name=bot_name)
+        task_name = self.request.query_params.get('task_name', None)
+        if task_name is not None:
+            queryset = queryset.filter(bot__name=task_name)
 
         return queryset
 
     def filter_queryset(self, queryset):
-        queryset = super(BotRunViewSet, self).filter_queryset(queryset)
+        queryset = super(TaskRunViewSet, self).filter_queryset(queryset)
         queryset = queryset.order_by("run_id")
         return queryset
 
@@ -42,8 +42,8 @@ class BotRunViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 def botrun_summary(request, pk):
     print(request)
-    botrun = BotRun.objects.get(pk=pk)
-    response = BotRunSerializer().to_representation(botrun)
+    botrun = TaskRun.objects.get(pk=pk)
+    response = TaskRunSerializer().to_representation(botrun)
     logs = Log.objects.filter(bot_run__pk=pk)
     actions = dict(Counter(logs.values_list("action", flat=True)))
 
