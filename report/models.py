@@ -88,6 +88,7 @@ class TaskRun(models.Model):
 
     class Meta:
         ordering = ("timestamp",)
+        unique_together = ("task", "timestamp")
 
 
 class Log(models.Model):
