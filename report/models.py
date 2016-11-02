@@ -9,11 +9,21 @@ class Person(models.Model):
         return '{}'.format(self.name)
 
 
+class Item(models.Model):
+    # Represents a wikidata item
+    id = models.CharField(max_length=16, primary_key=True)
+    name = models.CharField(max_length=64, null=True)
+
+    def __str__(self):
+        return '{}'.format(self.id)
+
+
 class Source(models.Model):
     # data source. e.g. Ensembl release 86
     name = models.CharField(max_length=64)
     url = models.URLField(null=True)
     release = models.CharField(null=True, max_length=64)
+    item = models.ForeignKey(Item, null=True)
 
     def __str__(self):
         return '{}: {}'.format(self.name, self.release)
@@ -36,15 +46,6 @@ class Tag(models.Model):
 
     def __str__(self):
         return '{}'.format(self.name)
-
-
-class Item(models.Model):
-    # Represents a wikidata item
-    id = models.CharField(max_length=16, primary_key=True)
-    name = models.CharField(max_length=64, null=True)
-
-    def __str__(self):
-        return '{}'.format(self.id)
 
 
 class Task(models.Model):
@@ -95,10 +96,10 @@ class Log(models.Model):
     task_run = models.ForeignKey(TaskRun)
     wdid = models.ForeignKey(Item)
     timestamp = models.DateTimeField()
-    action = models.CharField(max_length=64)  # CREATE, UPDATE, ERROR
-    external_id = models.CharField(max_length=255, null=True)
+    level = models.CharField(max_length=32)  # INFO, WARNING, ERROR, etc.
+    external_id = models.CharField(max_length=64, null=True)
     external_id_prop = models.ForeignKey(Property, null=True)
-    msg = models.CharField(max_length=255, null=True)  # an (optional) error message
+    msg = models.TextField(null=True)  # an (optional) message
 
     def __str__(self):
-        return '{}'.format(self.wdid, self.bot_run.bot, self.action)
+        return '{}'.format(';'.join([self.wdid, self.task_run.task, self.level, self.msg]))

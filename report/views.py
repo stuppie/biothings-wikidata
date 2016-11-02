@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import viewsets
 
-from report.models import TaskRun, Task, Log
+from report.models import TaskRun, Task, Log, Item
 from report.serializers import TaskSerializer, TaskRunSerializer, LogSerializer
 
 
@@ -26,34 +26,17 @@ class TaskRunViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = TaskRun.objects.all()
         run_name = self.request.query_params.get('run_name', None)
         if run_name is not None:
-            queryset = queryset.filter(run_name=run_name)
+            queryset = queryset.filter(name=run_name)
         task_name = self.request.query_params.get('task_name', None)
         if task_name is not None:
-            queryset = queryset.filter(bot__name=task_name)
+            queryset = queryset.filter(task__name=task_name)
 
         return queryset
 
     def filter_queryset(self, queryset):
         queryset = super(TaskRunViewSet, self).filter_queryset(queryset)
-        queryset = queryset.order_by("run_id")
+        queryset = queryset.order_by("timestamp")
         return queryset
-
-
-@api_view(['GET'])
-def botrun_summary(request, pk):
-    print(request)
-    botrun = TaskRun.objects.get(pk=pk)
-    response = TaskRunSerializer().to_representation(botrun)
-    logs = Log.objects.filter(bot_run__pk=pk)
-    actions = dict(Counter(logs.values_list("action", flat=True)))
-
-    #errors = LogSerializer(Log.objects.filter(action="ERROR"), many=True).data
-
-    response.update({
-        "actions": actions,
-        #"errors": errors
-    })
-    return Response(response)
 
 
 class LogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -63,13 +46,22 @@ class LogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = self.queryset
         wdid = self.request.query_params.get('wdid', None)
-        action = self.request.query_params.get('action', None)
-        bot_run = self.request.query_params.get('bot_run', None)
+        level = self.request.query_params.get('level', None)
+        task_name = self.request.query_params.get('task_name', None)
+        run_name = self.request.query_params.get('run_name', None)
+        run = self.request.query_params.get('run', None)
+        msg = self.request.query_params.get('msg', None)
         if wdid is not None:
             queryset = queryset.filter(wdid=wdid)
-        if action is not None:
-            queryset = queryset.filter(action=action)
-        if bot_run is not None:
-            queryset = queryset.filter(bot_run=bot_run)
+        if level is not None:
+            queryset = queryset.filter(level=level)
+        if task_name is not None:
+            queryset = queryset.filter(task_run__task__name=task_name)
+        if run_name is not None:
+            queryset = queryset.filter(task_run__name=run_name)
+        if run is not None:
+            queryset = queryset.filter(task_run=run)
+        if msg is not None:
+            queryset = queryset.filter(msg=msg)
 
         return queryset

@@ -27,10 +27,10 @@ from report import views
 router = DefaultRouter()
 router.register(r'taskrun', views.TaskRunViewSet)
 router.register(r'logs', views.LogViewSet)
+router.register(r'tasks', views.TaskViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
-    url(r'^botrun/(?P<pk>[^/.]+)/summary', views.botrun_summary),
     url(r'^barchart/$', TemplateView.as_view(template_name='barchart.html'), name="chart"),
     url(r'^linechart/$', TemplateView.as_view(template_name='linechart.html'), name="chart"),
 ]

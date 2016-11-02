@@ -2,28 +2,18 @@ import glob
 import json
 import os
 from datetime import datetime, timedelta
+import sys
 from dateutil.parser import parse as dateutil_parse
 
 import pandas as pd
 
+if "DJANGO_SETTINGS_MODULE" not in os.environ:
+    os.environ["DJANGO_SETTINGS_MODULE"] = "wikidata.settings"
+
+import django
+
+django.setup()
 from report.models import Person, TaskRun, Task, Tag, Item, Log, Property, Source
-
-
-def initial_setup():
-    # run once
-
-    person, _ = Person.objects.get_or_create(name="GSS", email="gstupp@scripps.edu")
-
-    entrez, _ = Property.objects.get_or_create(name="entrez_gene_id", id="P351")
-    ensembl_gene, _ = Property.objects.get_or_create(name="ensembl_gene_id", id="P594")
-    uniprot, _ = Property.objects.get_or_create(name="uniprot_id", id="P352")
-    ensembl_prot, _ = Property.objects.get_or_create(name="ensembl_protein_id", id="P705")
-    do, _ = Property.objects.get_or_create(name="disease_ontology_id", id="P699")
-    mesh, _ = Property.objects.get_or_create(name="mesh_id", id="P486")
-    refseq_genome_id, _ = Property.objects.get_or_create(name="refseq_genome_id", id="P2248")
-
-    #get_or_create_task("YeastBot", "GSS", domains=["gene", "protein"])
-
 
 def get_or_create_task(task_name, maintainer=None, tags=None, properties=None):
     """
@@ -38,9 +28,13 @@ def get_or_create_task(task_name, maintainer=None, tags=None, properties=None):
     :type properties: List[str]
     :return:
     """
+    tags = tags if tags else []
+    properties = properties if properties else []
+
     if not Task.objects.filter(name=task_name).exists():
         assert maintainer is not None
-        task = Task.objects.create(name=task_name, maintainer=Person.objects.get(name=maintainer))
+        person, _ = Person.objects.get_or_create(name=maintainer)
+        task = Task.objects.create(name=task_name, maintainer=person)
     else:
         task = Task.objects.get(name=task_name)
     for tag in tags:
@@ -82,12 +76,8 @@ def django_log_pd(task_run, row):
     prop, created = Property.objects.get_or_create(id=row.prop)
     if created:
         print("Property created: {}".format(prop))
-    if row.level == "ERROR":
-        return Log(wdid=item, timestamp=row.timestamp, task_run=task_run, action=row.level, external_id=row.external_id,
-                   external_id_prop=prop, msg=row.msg)
-    else:
-        return Log(wdid=item, timestamp=row.timestamp, task_run=task_run, action=row.msg, external_id=row.external_id,
-                   external_id_prop=prop)
+    return Log(wdid=item, timestamp=row.timestamp, task_run=task_run, level=row.level, external_id=row.external_id,
+               external_id_prop=prop, msg=row.msg)
 
 
 def parse_log(file_path):
@@ -99,7 +89,21 @@ def parse_log(file_path):
 
 
 def process_log(file_path):
+    """
+    Expects header as first line in log file. Header begins with comment character '#'. The line is a json string dump of
+    a dictionary that contains the following keys:
+    name: str, Task name
+    maintainer: str, Name of person
+    tags: list of tags associated with the task. can be empty
+    properties: list of properties associated with the task. can be empty
+    run_id: str, a run ID for the task run
+    timestamp: str, timestamp for the task run
 
+    :param file_path:
+    :return:
+    """
+
+    # TODO: http://stackoverflow.com/questions/27858539/python-logging-module-emits-wrong-timezone-information/27858760#27858760
     # read header
     with open(file_path) as f:
         line = f.readline()
@@ -110,6 +114,8 @@ def process_log(file_path):
 
     task = get_or_create_task(metadata['name'], maintainer=metadata['maintainer'], tags=metadata['tags'], properties=metadata['properties'])
     task_run = create_task_run(task, metadata['run_id'], dateutil_parse(metadata['timestamp']), sources=metadata.get('release', None))
+    if not task_run:
+        return
 
     df = parse_log(file_path)
     log_items = list(df.apply(lambda row: django_log_pd(task_run, row), axis=1))
@@ -120,4 +126,7 @@ def process_logs(log_dir):
     for file_path in glob.glob(os.path.join(log_dir,"*.log")):
         process_log(file_path)
 
-#process_logs("/home/gstupp/projects/biothings/wikidata/logs")
+
+if __name__=="__main__":
+
+    process_log(sys.argv[1])
