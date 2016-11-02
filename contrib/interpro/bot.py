@@ -5,35 +5,25 @@
 http://tinyurl.com/hdr3jnl
 """
 
-
 import argparse
-import logging
-import os
+import json
 from datetime import datetime
 
-from ProteinBoxBot_Core import PBB_Core, PBB_login
-from ProteinBoxBot_Core.PBB_Core import WDApiError
-from WDHelper import WDHelper
-from local import WDUSER, WDPASS
-
+from ProteinBoxBot_Core import PBB_Core, PBB_login, PBB_Helpers
 from pymongo import MongoClient
 from tqdm import tqdm
 
+from local import WDUSER, WDPASS
 
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
+__metadata__ = {'name': 'InterproBot',
+                'maintainer': 'GSS',
+                'tags': ['protein', 'interpro'],
+                'properties': None
+                }
 
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-info_logger = logging.getLogger('info_logger')
-info_logger.setLevel(logging.INFO)
-info_logger.addHandler(console)
-
-exc_formatter = logging.Formatter('>%(asctime)s %(levelname)s %(message)s')
-exc_logger = logging.getLogger('exc_logger')
-exc_logger.addHandler(console)
-
-interpro_version2wdid = {"59.0": "Q27135875"}  # make by hand, for now
+interpro_version2wdid = {"59.0": "Q27135875"}  # TODO:
 UNIPROT = "P352"
+INTERPRO = "P2926"
 
 # need to change
 # data sources
@@ -41,16 +31,6 @@ db = MongoClient().wikidata_src
 IPR_COLL = db.interpro
 UNIPROT_COLL = db.interpro_protein
 DBINFO_COLL = db.dbinfo
-
-
-def setup_logging(log_dir, date):
-    info_handler = logging.FileHandler(os.path.join(log_dir, 'interpro_{}_wikidata_info.log'.format(date)))
-    info_handler.setFormatter(formatter)
-    info_logger.addHandler(info_handler)
-
-    exc_handler = logging.FileHandler(os.path.join(log_dir, 'interpro_{}_wikidata_exc.log'.format(date)))
-    exc_handler.setFormatter(exc_formatter)
-    exc_logger.addHandler(exc_handler)
 
 
 class IPRTerm:
@@ -69,10 +49,9 @@ class IPRTerm:
      'type_wdid': 'Q898273'}
 
     """
-    INTERPRO = "P2926"
+
     fast_run_base_filter = {INTERPRO: ''}
-    ipr2wd = WDHelper().id_mapper(INTERPRO)
-    login_instance = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
+    ipr2wd = PBB_Helpers.id_mapper(INTERPRO)
 
     type2desc = {"Active_site": "InterPro Active Site",
                  "Binding_site": "InterPro Binding Site",
@@ -109,11 +88,11 @@ class IPRTerm:
         if self.description is None and self.type:
             self.description = IPRTerm.type2desc[self.type]
         self.lang_descr = {'en': self.description}
-        self.interpro_version = interpro_version
-        if self.interpro_version not in interpro_version2wdid:
-            raise ValueError("Must create new Interpro version wikidata item")
-        self.interpro_version_wdid = interpro_version2wdid[self.interpro_version]
         self.reference = None
+        self.interpro_version = None
+        self.interpro_version_wdid = None
+
+        self.set_interpro_version(interpro_version)
 
         # self.do_wdid_lookup()
         self.create_reference()
@@ -126,7 +105,13 @@ class IPRTerm:
 
     @classmethod
     def refresh_ipr_wd(cls):
-        cls.ipr2wd = WDHelper().id_mapper(cls.INTERPRO)
+        cls.ipr2wd = PBB_Helpers.id_mapper(INTERPRO)
+
+    def set_interpro_version(self, interpro_version):
+        self.interpro_version = interpro_version
+        if self.interpro_version not in interpro_version2wdid:
+            raise ValueError("Must create new Interpro version wikidata item")
+        self.interpro_version_wdid = interpro_version2wdid[self.interpro_version]
 
     def do_wdid_lookup(self):
         # this can only be done after all items have been created
@@ -143,43 +128,32 @@ class IPRTerm:
         """ Create wikidata references for interpro
         This same reference will be used for everything. Except for a ref to the interpro item itself
         """
-        ref_stated_in = PBB_Core.WDItemID(self.interpro_version_wdid, 'P248',
-                                          is_reference=True)  # stated in Interpro version XX.X
-        ref_ipr = PBB_Core.WDString(self.id, IPRTerm.INTERPRO, is_reference=True)  # interpro ID
+        # stated in Interpro version XX.X
+        ref_stated_in = PBB_Core.WDItemID(self.interpro_version_wdid, 'P248', is_reference=True)
+        ref_ipr = PBB_Core.WDString(self.id, INTERPRO, is_reference=True)  # interpro ID
         self.reference = [ref_stated_in, ref_ipr]
 
-    def create_item(self, perform_write=True):
-        statements = [PBB_Core.WDExternalID(value=self.id, prop_nr=IPRTerm.INTERPRO, references=[self.reference]),
-                      PBB_Core.WDItemID(value=self.type_wdid, prop_nr="P279", references=[self.reference])]
+    def create_item(self, login):
+        statements = [PBB_Core.WDExternalID(value=self.id, prop_nr=INTERPRO, references=[self.reference]),
+                      PBB_Core.WDItemID(value=self.type_wdid, prop_nr="P279",
+                                        references=[self.reference])]
 
-        wd_item = PBB_Core.WDItemEngine(item_name=self.name, domain='interpro', data=statements, append_value=['P279'],
+        wd_item = PBB_Core.WDItemEngine(item_name=self.name, domain='interpro', data=statements,
+                                        append_value=["P279"],
                                         fast_run=True, fast_run_base_filter=IPRTerm.fast_run_base_filter)
         wd_item.set_label(self.name, lang='en')
         for lang, description in self.lang_descr.items():
             wd_item.set_description(description, lang=lang)
         wd_item.set_aliases([self.short_name, self.id])
 
-        if wd_item.require_write and perform_write:
-            self.try_write(wd_item)
+        PBB_Helpers.try_write(wd_item, self.id, INTERPRO, login)
 
         return wd_item
 
-    def try_write(self, wd_item):
-        create_new_item = wd_item.create_new_item
-        try:
-            wd_item.write(IPRTerm.login_instance)
-        except WDApiError as e:
-            exc_logger.exception("wdapierror " + self.id + " " + wd_item.wd_item_id)
-            # raise e
-        if create_new_item:
-            info_logger.info("item_created " + self.id + " " + wd_item.wd_item_id)
-        else:
-            info_logger.info("item_updated " + self.id + " " + wd_item.wd_item_id)
-
-    def create_relationships(self):
+    def create_relationships(self, login):
         self.do_wdid_lookup()
 
-        statements = [PBB_Core.WDExternalID(value=self.id, prop_nr=IPRTerm.INTERPRO, references=[self.reference])]
+        statements = [PBB_Core.WDExternalID(value=self.id, prop_nr=INTERPRO, references=[self.reference])]
         if self.parent:
             # subclass of
             statements.append(PBB_Core.WDItemID(value=self.parent_wdid, prop_nr='P279', references=[self.reference]))
@@ -195,52 +169,48 @@ class IPRTerm:
         wd_item = PBB_Core.WDItemEngine(item_name=self.name, domain='interpro', data=statements,
                                         append_value=['P279', 'P527', 'P361'],
                                         fast_run=True, fast_run_base_filter=IPRTerm.fast_run_base_filter)
-        if wd_item.require_write:
-            self.try_write(wd_item)
+
+        PBB_Helpers.try_write(wd_item, self.id, INTERPRO, login)
 
 
-def create_interpro_items():
+def create_interpro_items(login, interpro_version):
     # insert all interpro items
-    info_logger.info("run_start_insert_items xxx xxx")
-    coll = IPR_COLL
-    ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
-    cursor = coll.find(no_cursor_timeout=True)
-    for n, doc in tqdm(enumerate(cursor), total=cursor.count(), miniters=1000):
-        term = IPRTerm(**doc, interpro_version=ipr_version)
-        term.create_item()
+    cursor = IPR_COLL.find(no_cursor_timeout=True)
+    for n, doc in tqdm(enumerate(cursor), total=cursor.count()):
+        term = IPRTerm(**doc, interpro_version=interpro_version)
+        term.create_item(login)
     cursor.close()
 
 
-def create_ipr_relationships():
-    info_logger.info("run_start_item_rel xxx xxx")
-    coll = IPR_COLL
-    ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
+def create_ipr_relationships(login, interpro_version):
     terms = []
-    for doc in coll.find():
-        term = IPRTerm(**doc, interpro_version=ipr_version)
+    for doc in IPR_COLL.find():
+        term = IPRTerm(**doc, interpro_version=interpro_version)
         terms.append(term)
     IPRTerm.refresh_ipr_wd()
-    for term in tqdm(terms, miniters=1000):
-        term.create_relationships()
+    for term in tqdm(terms):
+        term.create_relationships(login)
 
 
-def create_uniprot_relationships():
-    info_logger.info("run_start_prot_rel xxx xxx")
-    wc = 0
-    coll = UNIPROT_COLL
+def create_uniprot_relationships(login, interpro_version, taxon=None):
     # only do uniprot proteins that are already in wikidata
-    uniprot2wd = WDHelper().id_mapper(UNIPROT)
-    cursor = coll.find({'_id': {'$in': list(uniprot2wd.keys())}}, no_cursor_timeout=True)
-    for n, doc in tqdm(enumerate(cursor), total=cursor.count(), miniters=1000):
+    if taxon:
+        uniprot2wd = PBB_Helpers.id_mapper(UNIPROT, (("P703", taxon),))
+        fast_run_base_filter = {UNIPROT: "", "P703": taxon}
+    else:
+        uniprot2wd = PBB_Helpers.id_mapper(UNIPROT)
+        fast_run_base_filter = {UNIPROT: ""}
+
+    cursor = UNIPROT_COLL.find({'_id': {'$in': list(uniprot2wd.keys())}}, no_cursor_timeout=True)
+    for doc in tqdm(cursor, total=cursor.count()):
         uniprot_id = doc['_id']
-        ipr_version = DBINFO_COLL.find_one("INTERPRO")['version']
         statements = []
         # uniprot ID. needed for PBB_core to find uniprot item
         # statements.append(PBB_Core.WDExternalID(value=uniprot_id, prop_nr=UNIPROT))
 
         ## References
         # stated in Interpro version XX.X
-        ref_stated_in = PBB_Core.WDItemID(interpro_version2wdid[ipr_version], 'P248', is_reference=True)
+        ref_stated_in = PBB_Core.WDItemID(interpro_version2wdid[interpro_version], 'P248', is_reference=True)
         ref_ipr = PBB_Core.WDString("http://www.ebi.ac.uk/interpro/protein/{}".format(uniprot_id), "P854",
                                     is_reference=True)
         reference = [ref_stated_in, ref_ipr]
@@ -252,31 +222,63 @@ def create_uniprot_relationships():
             for hp in doc['has_part']:
                 statements.append(PBB_Core.WDItemID(value=IPRTerm.ipr2wd[hp], prop_nr='P527', references=[reference]))
 
-        try:
-            wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
-                                            fast_run=True, fast_run_base_filter={UNIPROT: ""},
-                                            append_value=["P279", "P527", "P361"])
-        except KeyError as e:
-            exc_logger.exception("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
+        if uniprot_id not in uniprot2wd:
             print("wdid_not_found " + uniprot_id + " " + uniprot2wd[uniprot_id])
-            continue
+            PBB_Core.WDItemEngine.log("ERROR",
+                                      PBB_Helpers.format_msg(uniprot_id, "wdid_not_found", None, UNIPROT))
 
-        if wd_item.require_write:
-            wc += 1
-            create_new_item = wd_item.create_new_item
-            if create_new_item:
-                raise ValueError("something bad happened")
-            try:
-                wd_item.write(IPRTerm.login_instance, edit_summary="add/update family and/or domains")
-            except Exception as e:
-                exc_logger.exception(" ".join(["write_error", uniprot_id, wd_item.wd_item_id]) + "\n" + str(e))
-                continue
-                # raise e
-            if create_new_item:
-                info_logger.info(" ".join(["item_created", uniprot_id, wd_item.wd_item_id]))
-            else:
-                info_logger.info(" ".join(["item_updated", uniprot_id, wd_item.wd_item_id]))
+        wd_item = PBB_Core.WDItemEngine(wd_item_id=uniprot2wd[uniprot_id], domain="proteins", data=statements,
+                                        fast_run=True, fast_run_base_filter=fast_run_base_filter,
+                                        append_value=["P279", "P527", "P361"])
+
+        if wd_item.create_new_item:
+            raise ValueError("something bad happened")
+        PBB_Helpers.try_write(wd_item, uniprot_id, INTERPRO, login, edit_summary="add/update family and/or domains")
+
     cursor.close()
+
+
+def get_interpro_version():
+    return DBINFO_COLL.find_one("INTERPRO")['version']
+
+
+def main(log_dir="./logs", run_id=None, items=True, rel=True, uniprot=True, taxon=None):
+    if run_id is None:
+        run_id = datetime.now().strftime('%Y%m%d_%H:%M')
+    if log_dir is None:
+        log_dir = "./logs"
+    __metadata__['run_id'] = run_id
+    __metadata__['timestamp'] = str(datetime.now())
+
+    interpro_version = get_interpro_version()
+    __metadata__['release'] = {'InterPro': interpro_version}
+
+    login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
+
+    if items:
+        __metadata__['name'] = 'InterproBot_Items'
+        __metadata__['properties'] = ["P279", "P2926"]
+        log_name = '{}-{}.log'.format(__metadata__['name'], run_id)
+        if PBB_Core.WDItemEngine.logger is not None:
+            PBB_Core.WDItemEngine.logger.handles = []
+        PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
+        create_interpro_items(login, interpro_version)
+    if rel:
+        __metadata__['name'] = 'InterproBot_ItemRel'
+        __metadata__['properties'] = ["P279", "P527", "P361"]
+        log_name = '{}-{}.log'.format(__metadata__['name'], run_id)
+        if PBB_Core.WDItemEngine.logger is not None:
+            PBB_Core.WDItemEngine.logger.handles = []
+        PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
+        create_ipr_relationships(login, interpro_version)
+    if uniprot:
+        __metadata__['name'] = 'InterproBot_Proteins'
+        __metadata__['properties'] = ["P279", "P527", "P361"]
+        log_name = '{}-{}.log'.format(__metadata__['name'], run_id)
+        if PBB_Core.WDItemEngine.logger is not None:
+            PBB_Core.WDItemEngine.logger.handles = []
+        PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
+        create_uniprot_relationships(login, interpro_version, taxon)
 
 
 if __name__ == "__main__":
@@ -284,23 +286,13 @@ if __name__ == "__main__":
     parser.add_argument('--items', action='store_true', help='create/update interpro items')
     parser.add_argument('--rel', action='store_true', help='add inter-interpro relationships')
     parser.add_argument('--uniprot', action='store_true', help='add uniprot/protein to interpro relationships')
-    parser.add_argument('--log_dir', help='directory to store logs', type=str)
-    parser.add_argument('--date', help='log date', type=str)
+    parser.add_argument('--log-dir', help='directory to store logs', type=str)
+    parser.add_argument('--run-id', help='run_id', type=str)
+    parser.add_argument('--taxon', help='limit protein<->interpro to taxon', type=str)
+
     args = parser.parse_args()
 
-    log_dir = args.log_dir if args.log_dir else os.getcwd()
-    d = datetime.now()
-    date = args.date if args.date else "".join(map(str,[d.year, d.month, d.day]))
-    setup_logging(log_dir, date)
-
-    if args.items:
-        create_interpro_items()
-    if args.rel:
-        create_ipr_relationships()
-    if args.uniprot:
-        create_uniprot_relationships()
-
     if not (args.items or args.rel or args.uniprot):
-        create_interpro_items()
-        create_ipr_relationships()
-        create_uniprot_relationships()
+        args.items = args.rel = args.uniprot = True
+
+    main(args.log_dir, args.run_id, items=args.items, rel=args.rel, uniprot=args.uniprot, taxon=args.taxon)
