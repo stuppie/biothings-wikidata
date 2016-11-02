@@ -15,23 +15,31 @@ https://www.wikidata.org/wiki/Q23162696
 import json
 from datetime import datetime
 
-from ProteinBoxBot_Core import PBB_login, PBB_Core
+from ProteinBoxBot_Core import PBB_login, PBB_Core, PBB_Helpers
 from tqdm import tqdm
 
 import ChromosomeBot
-from HelperBot import strain_info, make_reference, format_msg, make_ref_source, try_write
+from HelperBot import strain_info, format_msg, make_ref_source
 from SourceBot import get_source_version, get_data_from_mygene
 from local import WDUSER, WDPASS
 
 ENTREZ_PROP = "P351"
 
+PROPS = {'found in taxon': 'P703',
+         'subclass of': 'P279',
+         'strand orientation': 'P2548',
+         'Entrez Gene ID': 'P351',
+         'NCBI Locus tag': 'P2393',
+         'Ensembl Gene ID': 'P594',
+         'genomic start': 'P644',
+         'genomic end': 'P645',
+         'chromosome': 'P1057'}
+
 __metadata__ = {'name': 'YeastBot_Gene',
                 'maintainer': 'GSS',
                 'tags': ['yeast', 'gene'],
-                'properties': ['P703', 'P279', 'P2548', 'P351', 'P2393', 'P594', 'P644', 'P645', 'P1057']
+                'properties': list(PROPS.values())
                 }
-
-PROPS = {''}
 
 def wd_item_construction(record, strain_info, chrom_wdid, login):
     """
@@ -55,25 +63,29 @@ def wd_item_construction(record, strain_info, chrom_wdid, login):
         ############
         # will be used for reference statements
         external_ids = {'entrez_gene': str(record['entrezgene']['@value']),
-                        'ensembl_gene': record['ensembl']['@value']['gene']
+                        'ensembl_gene': record['ensembl']['@value']['gene'],
+                        'locus_tag': record['locus_tag']['@value']
                         }
 
         # entrez gene id
         entrez_ref = make_ref_source(record['entrezgene']['@source'], 'entrez_gene', external_ids['entrez_gene'])
-        s.append(PBB_Core.WDString(external_ids['entrez_gene'], 'P351', references=[entrez_ref]))
+        s.append(PBB_Core.WDString(external_ids['entrez_gene'], PROPS['Entrez Gene ID'], references=[entrez_ref]))
 
         # ensembl gene id
         ensembl_ref = make_ref_source(record['ensembl']['@source'], 'ensembl_gene', external_ids['ensembl_gene'])
-        s.append(PBB_Core.WDString(external_ids['ensembl_gene'], 'P594', references=[ensembl_ref]))
+        s.append(PBB_Core.WDString(external_ids['ensembl_gene'], PROPS['Ensembl Gene ID'], references=[ensembl_ref]))
+
+        # ncbi locus tag
+        s.append(PBB_Core.WDString(external_ids['locus_tag'], PROPS['NCBI Locus tag'], references=[entrez_ref]))
 
         ############
         # statements with no referencable sources (make by hand, for now...)
         ############
         # subclass of gene
-        s.append(PBB_Core.WDItemID('Q7187', 'P279', references=[ensembl_ref]))
+        s.append(PBB_Core.WDItemID('Q7187', PROPS['subclass of'], references=[ensembl_ref]))
 
         # found in taxon
-        s.append(PBB_Core.WDItemID(strain_info['organism_wdid'], 'P703', references=[ensembl_ref]))
+        s.append(PBB_Core.WDItemID(strain_info['organism_wdid'], PROPS['found in taxon'], references=[ensembl_ref]))
 
         ############
         # genomic position: start, end, strand orientation, chromosome
@@ -89,12 +101,13 @@ def wd_item_construction(record, strain_info, chrom_wdid, login):
 
         # strand orientation
         strand_orientation = 'Q22809680' if genomic_pos_value['strand'] == 1 else 'Q22809711'
-        s.append(PBB_Core.WDItemID(strand_orientation, 'P2548', references=[genomic_pos_ref]))
+        s.append(PBB_Core.WDItemID(strand_orientation, PROPS['strand orientation'], references=[genomic_pos_ref]))
         # genomic start and end
-        s.append(PBB_Core.WDString(str(int(genomic_pos_value['start'])), 'P644', references=[genomic_pos_ref], qualifiers=[rs_chrom]))
-        s.append(PBB_Core.WDString(str(int(genomic_pos_value['end'])), 'P645', references=[genomic_pos_ref], qualifiers=[rs_chrom]))
+        s.append(PBB_Core.WDString(str(int(genomic_pos_value['start'])), PROPS['genomic start'], references=[genomic_pos_ref], qualifiers=[rs_chrom]))
+        s.append(PBB_Core.WDString(str(int(genomic_pos_value['end'])), PROPS['genomic end'], references=[genomic_pos_ref], qualifiers=[rs_chrom]))
         # chromosome
-        s.append(PBB_Core.WDItemID(chrom_wdid[genomic_pos_value['chr']], 'P1057', references=[genomic_pos_ref]))
+        chr_genomic_id = strain_info['chrom_genomeid_map'][genomic_pos_value['chr']]
+        s.append(PBB_Core.WDItemID(chrom_wdid[chr_genomic_id], PROPS['chromosome'], references=[genomic_pos_ref]))
 
         return s
 
@@ -103,18 +116,18 @@ def wd_item_construction(record, strain_info, chrom_wdid, login):
 
     statements = gene_item_statements()
     wd_item_gene = PBB_Core.WDItemEngine(item_name=item_name, domain='genes', data=statements,
-                                         append_value=['P279'],
-                                         fast_run=False,
-                                         fast_run_base_filter={'P351': '', 'P703': strain_info['organism_wdid']})
+                                         append_value=[PROPS['subclass of']],
+                                         fast_run=True,
+                                         fast_run_base_filter={PROPS['Entrez Gene ID']: '', PROPS['found in taxon']: strain_info['organism_wdid']})
     wd_item_gene.set_label(item_name)
     wd_item_gene.set_description(item_description, lang='en')
     wd_item_gene.set_aliases([record['symbol']['@value'], record['locus_tag']['@value']])
 
-    try_write(wd_item_gene, record['_id']['@value'], ENTREZ_PROP, login)
+    PBB_Helpers.try_write(wd_item_gene, record['_id']['@value'], ENTREZ_PROP, login)
 
 
 def run(login, gene_records, chrom_wdid):
-    for n, record in tqdm(enumerate(gene_records), desc=strain_info['organism_name']):
+    for record in tqdm(gene_records):
         if 'genomic_pos' not in record:
             # see: http://mygene.info/v3/gene/855814
             PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "no_position", '', ENTREZ_PROP))
@@ -124,7 +137,6 @@ def run(login, gene_records, chrom_wdid):
             PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "multiple_positions", '', ENTREZ_PROP))
             continue
         wd_item_construction(record, strain_info, chrom_wdid, login)
-        return
 
 
 def main(log_dir="./logs", run_id=None):
@@ -140,8 +152,11 @@ def main(log_dir="./logs", run_id=None):
     records = get_data_from_mygene()
 
     login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
-    chrom_wdid = ChromosomeBot.main(login=login, log_dir=log_dir, run_id=run_id)
 
+    chrom_wdid = PBB_Helpers.id_mapper("P2249", (("P703", "Q27510868"),))
+
+    if PBB_Core.WDItemEngine.logger is not None:
+        PBB_Core.WDItemEngine.logger.handles = []
     PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
     run(login, records, chrom_wdid)
 

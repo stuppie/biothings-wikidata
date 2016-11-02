@@ -7,16 +7,14 @@ https://www.wikidata.org/wiki/Q22291171
 """
 import copy
 import json
-from collections import defaultdict, Counter
 from datetime import datetime
 
-from ProteinBoxBot_Core import PBB_login, PBB_Core
+from ProteinBoxBot_Core import PBB_login, PBB_Core, PBB_Helpers
+from interproscan.WDHelper import WDHelper
 from tqdm import tqdm
 
 from HelperBot import strain_info, go_props, go_evidence_codes, make_reference, format_msg, make_ref_source, try_write
-import PubmedBot
 from SourceBot import get_data_from_mygene, get_source_version
-from WDHelper import WDHelper
 from local import WDUSER, WDPASS
 
 __metadata__ = {'name': 'YeastBot_Protein',
@@ -76,7 +74,7 @@ def preprocess_go(record):
         record['go']['@value'][level] = go_terms
 
 
-def protein_item(record, strain_info, gene_qid, go_wdid_mapping, login):
+def protein_item(record, strain_info, gene_qid, go_wdid_mapping, login, add_pubmed):
     """
     generate pbb_core item object
     """
@@ -123,9 +121,10 @@ def protein_item(record, strain_info, gene_qid, go_wdid_mapping, login):
             evidence_wdid = go_evidence_codes[go_record['evidence']]
             evidence_statement = PBB_Core.WDItemID(value=evidence_wdid, prop_nr='P459',is_qualifier=True)
             this_reference = copy.deepcopy(reference)
-            for pubmed in go_record['pubmed']:
-                pmid_wdid = PubmedBot.Pubmed(str(pubmed)).create()
-                this_reference.append(PBB_Core.WDItemID(pmid_wdid, 'P248', is_reference=True))
+            if add_pubmed:
+                for pubmed in go_record['pubmed']:
+                    pmid_wdid = PBB_Helpers.PubmedStub(pubmed).create(login)
+                    this_reference.append(PBB_Core.WDItemID(pmid_wdid, 'P248', is_reference=True))
             s.append(PBB_Core.WDItemID(go_wdid, level_wdid, references=[this_reference], qualifiers=[evidence_statement]))
 
 
@@ -158,7 +157,7 @@ def protein_item(record, strain_info, gene_qid, go_wdid_mapping, login):
     try_write(wd_item_protein, record['entrezgene']['@value'], 'P351', login)
 
 
-def run(login, records):
+def run(login, records, add_pubmed):
 
     # get all entrez gene id -> wdid mappings, where found in taxon is this strain
     gene_wdid_mapping = WDHelper().id_mapper("P351", (("P703", strain_info['organism_wdid']),))
@@ -172,16 +171,15 @@ def run(login, records):
             PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "gene_not_found", None, ENTREZ_PROP))
             continue
         gene_qid = gene_wdid_mapping[entrez_gene]
-        protein_item(record, strain_info, gene_qid, go_wdid_mapping, login)
-        return
+        protein_item(record, strain_info, gene_qid, go_wdid_mapping, login, add_pubmed)
 
 
 def run_encodes(login, records):
     # get all entrez gene id -> wdid mappings, where found in taxon is this strain
-    gene_wdid_mapping = WDHelper().id_mapper("P351", (("P703", strain_info['organism_wdid']),))
+    gene_wdid_mapping = PBB_Helpers.id_mapper("P351", (("P703", strain_info['organism_wdid']),))
 
     # get all ensembl protein id -> wdid mappings, where found in taxon is this strain
-    protein_wdid_mapping = WDHelper().id_mapper("P705", (("P703", strain_info['organism_wdid']),))
+    protein_wdid_mapping = PBB_Helpers.id_mapper("P705", (("P703", strain_info['organism_wdid']),))
 
     for record in tqdm(records, desc=strain_info['organism_name']):
         entrez_gene = str(record['entrezgene']['@value'])
@@ -193,7 +191,7 @@ def run_encodes(login, records):
         gene_encodes_statement(gene_qid, protein_qid, 'ncbi_gene', entrez_gene, record['ensembl']['@source'], login)
 
 
-def main(log_dir="./logs", run_id=None):
+def main(log_dir="./logs", run_id=None, add_pubmed=True):
     if run_id is None:
         run_id = datetime.now().strftime('%Y%m%d_%H:%M')
     __metadata__['run_id'] = run_id
@@ -204,13 +202,17 @@ def main(log_dir="./logs", run_id=None):
     records = get_data_from_mygene()
 
     login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
+    if PBB_Core.WDItemEngine.logger is not None:
+        PBB_Core.WDItemEngine.logger.handles = []
     PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
-    run(login, records)
-    return
+    run(login, records, add_pubmed)
 
     log_name = 'YeastBot_encodes-{}.log'.format(run_id)
     __metadata__['log_name'] = log_name
     __metadata__['name'] = "YeastBot_Encodes"
+    if PBB_Core.WDItemEngine.logger is not None:
+        PBB_Core.WDItemEngine.logger.handles = []
+    PBB_Core.WDItemEngine.setup_logging(log_dir=log_dir, log_name=log_name, header=json.dumps(__metadata__))
     run_encodes(login, records)
 
 
