@@ -16,49 +16,49 @@ from tqdm import tqdm
 
 
 def release_info(data_folder):
-    file_path = os.path.join(data_folder, "pub/databases/interpro/interpro.xml.gz")
+    file_path = os.path.join(data_folder, "interpro.xml.gz")
     f = gzip.GzipFile(file_path)
-    parser = et.parse(f)
-    root = parser.getroot()
-    #ipr_release_info = dict(root.find("release").find("dbinfo[@dbname='INTERPRO']").attrib)
-    #ipr_release_info['date'] = dup.parse(release_info['file_date'])
-    d = []
-    for db_item in root.find("release"):
-        #db_item.attrib['file_date'] = dup.parse(db_item.attrib['file_date'])
-        db_item.attrib['_id'] = db_item.attrib['dbname']
-        d.append(dict(db_item.attrib))
-    return d
+    context = iter(et.iterparse(f, events=("start", "end")))
+    event, root = next(context)
+
+    for event, db_item in context:
+        if event == "end" and db_item.tag == "dbinfo":
+            db_item.attrib['_id'] = db_item.attrib['dbname']
+            yield dict(db_item.attrib)
+        root.clear()
 
 
 def parse_interpro_xml(data_folder):
-    file_path = os.path.join(data_folder, "pub/databases/interpro/interpro.xml.gz")
+    file_path = os.path.join(data_folder, "interpro.xml.gz")
     f = gzip.GzipFile(file_path)
-    parser = et.parse(f)
-    root = parser.getroot()
+    context = iter(et.iterparse(f, events=("start", "end")))
+    event, root = next(context)
 
-    for itemxml in root.findall("interpro"):
-        item = dict(name=itemxml.find('name').text, **itemxml.attrib)
-        item['_id'] = item['id']
-        item['protein_count'] = int(item['protein_count'])
-        parents = [x.attrib['ipr_ref'] for x in itemxml.find("parent_list").getchildren()] if itemxml.find(
-            "parent_list") is not None else None
-        children = [x.attrib['ipr_ref'] for x in itemxml.find("child_list").getchildren()] if itemxml.find(
-            "child_list") is not None else None
-        contains = [x.attrib['ipr_ref'] for x in itemxml.find("contains").getchildren()] if itemxml.find(
-            "contains") is not None else None
-        found_in = [x.attrib['ipr_ref'] for x in itemxml.find("found_in").getchildren()] if itemxml.find(
-            "found_in") is not None else None
-        if parents:
-            assert len(parents) == 1
-            item['parent'] = parents[0]
-        item['children'] = children
-        item['contains'] = contains
-        item['found_in'] = found_in
-        yield item
+    for event, itemxml in context:
+        if event == "end" and itemxml.tag == "interpro":
+            item = dict(name=itemxml.find('name').text, **itemxml.attrib)
+            item['_id'] = item['id']
+            item['protein_count'] = int(item['protein_count'])
+            parents = [x.attrib['ipr_ref'] for x in itemxml.find("parent_list").getchildren()] if itemxml.find(
+                "parent_list") is not None else None
+            children = [x.attrib['ipr_ref'] for x in itemxml.find("child_list").getchildren()] if itemxml.find(
+                "child_list") is not None else None
+            contains = [x.attrib['ipr_ref'] for x in itemxml.find("contains").getchildren()] if itemxml.find(
+                "contains") is not None else None
+            found_in = [x.attrib['ipr_ref'] for x in itemxml.find("found_in").getchildren()] if itemxml.find(
+                "found_in") is not None else None
+            if parents:
+                assert len(parents) == 1
+                item['parent'] = parents[0]
+            item['children'] = children
+            item['contains'] = contains
+            item['found_in'] = found_in
+            yield item
+        root.clear()
 
 
 def parse_protein_ipr(data_folder, ipr_items):
-    file_path = os.path.join(data_folder, "pub/databases/interpro/protein2ipr.dat.gz")
+    file_path = os.path.join(data_folder, "protein2ipr.dat.gz")
     print(file_path)
     p = subprocess.Popen(["zcat", file_path], stdout=subprocess.PIPE).stdout
     d = {}

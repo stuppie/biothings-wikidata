@@ -251,7 +251,9 @@ def main(log_dir="./logs", run_id=None, items=True, rel=True, uniprot=True, taxo
     __metadata__['timestamp'] = str(datetime.now())
 
     interpro_version = get_interpro_version()
-    __metadata__['release'] = {'InterPro': interpro_version}
+    release = {'InterPro': DBINFO_COLL.find_one("INTERPRO", {'version': True, 'release': True, 'timestamp': True})}
+    release['InterPro']['release'] = release['InterPro']['version']
+    __metadata__['release'] = release
 
     login = PBB_login.WDLogin(user=WDUSER, pwd=WDPASS)
 
