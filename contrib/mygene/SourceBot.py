@@ -175,10 +175,8 @@ Example doc with source tags:
         }
 }
 
-
-
-
 """
+
 from pymongo import MongoClient
 
 
@@ -189,49 +187,33 @@ def tag_dict_with_source(d, source):
 def get_data_from_mygene(taxid=559292):
     """
     Get all yeast gene/protein information from mygene source collections
-
-    :return:
     """
 
     db = MongoClient("su05").genedoc_src
-
-    # get source versions
-    ensembl_source = {k: v for k, v in db.src_dump.find_one({"_id": "ensembl"}).items() if
-                      k in {'_id', 'release', 'timestamp'}}
-    entrez_source = {k: v for k, v in db.src_dump.find_one({"_id": "entrez"}).items() if
-                     k in {'_id', 'release', 'timestamp'}}
-    uniprot_source = {k: v for k, v in db.src_dump.find_one({"_id": "uniprot"}).items() if
-                     k in {'_id', 'release', 'timestamp'}}
-
-    # mygene mongo dbs
-    ensembl_genomic_pos = db.ensembl_genomic_pos
-    ensembl_acc = db.ensembl_acc
-    entrez_gene = db.entrez_gene
-    entrez_go = db.entrez_go
-    uniprot = db.uniprot
-    entrez_refseq = db.entrez_refseq
-
-    docs = list(tag_dict_with_source(d, entrez_source) for d in entrez_gene.find({'taxid': taxid}))
+    sources = get_source_versions()
+    docs = list(tag_dict_with_source(d, sources['Entrez']) for d in db.entrez_gene.find({'taxid': taxid}))
 
     for doc in docs:
         entrez_id = str(doc['entrezgene']['@value'])
-        d = ensembl_genomic_pos.find_one(entrez_id) or {}
-        doc.update(tag_dict_with_source(d, ensembl_source))
-        d = ensembl_acc.find_one(entrez_id) or {}
-        doc.update(tag_dict_with_source(d, ensembl_source))
-        d = entrez_go.find_one(entrez_id) or {}
-        doc.update(tag_dict_with_source(d, entrez_source))
-        d = uniprot.find_one(entrez_id) or {}
-        doc.update(tag_dict_with_source(d, uniprot_source))
-        d = entrez_refseq.find_one(entrez_id) or {}
-        doc.update(tag_dict_with_source(d, entrez_source))
+        d = db.ensembl_genomic_pos.find_one(entrez_id) or {}
+        doc.update(tag_dict_with_source(d, sources['Ensembl']))
+        d = db.ensembl_acc.find_one(entrez_id) or {}
+        doc.update(tag_dict_with_source(d, sources['Ensembl']))
+        d = db.entrez_go.find_one(entrez_id) or {}
+        doc.update(tag_dict_with_source(d, sources['Entrez']))
+        d = db.uniprot.find_one(entrez_id) or {}
+        doc.update(tag_dict_with_source(d, sources['Uniprot']))
+        d = db.entrez_refseq.find_one(entrez_id) or {}
+        doc.update(tag_dict_with_source(d, sources['Entrez']))
 
     return docs
 
 
-def get_source_version():
+def get_source_versions():
     db = MongoClient("su05").genedoc_src
-    return {'ensembl': db.src_dump.find_one({"_id": "ensembl"})['release'],
-            'entrez':  db.src_dump.find_one({"_id": "entrez"})['timestamp'],
-            'uniprot':  db.src_dump.find_one({"_id": "uniprot"})['timestamp'],
-            }
+    source_names = {'Ensembl', 'Entrez', 'Uniprot'}
+    sources = {source: db.src_dump.find_one({"_id": source.lower()}, {'release': True, 'timestamp': True})
+               for source in source_names}
+    for source, source_dict in sources.items():
+        source_dict['_id'] = source
+    return sources

@@ -1,5 +1,6 @@
 from datetime import datetime
 from ProteinBoxBot_Core import PBB_Core
+from ProteinBoxBot_Core import PBB_Helpers
 
 strain_info = {
     "organism_type": "fungal",
@@ -57,13 +58,13 @@ go_evidence_codes = {
     'IMR': 'Q23190842'
 }
 
-source_items = {'uniprot': 'Q905695',
+source_items = {'Uniprot': 'Q905695',
                 'ncbi_gene': 'Q20641742', # these two are the same?  --v
-                'entrez':    'Q20641742',
+                'Entrez':    'Q20641742',
                 'ncbi_taxonomy': 'Q13711410',
                 'swiss_prot': 'Q2629752',
                 'trembl': 'Q22935315',
-                'ensembl': 'Q1344256',
+                'Ensembl': 'Q1344256',
                 'refseq': 'Q7307074'}
 
 prop_ids = {'uniprot': 'P352',
@@ -77,29 +78,7 @@ prop_ids = {'uniprot': 'P352',
             }
 
 
-# TODO: Make bot automatically query for these, and create if not exists
-release_items = {'ensembl': {"86": "Q27613766",
-                             "83": "Q21996330"}}
-
-
-def try_write(wd_item, record_id, record_prop, login):
-    if wd_item.require_write:
-        if wd_item.create_new_item:
-            msg = "CREATE"
-        else:
-            msg = "UPDATE"
-    else:
-        msg = "SKIP"
-
-    try:
-        wd_item.write(login=login)
-        PBB_Core.WDItemEngine.log("INFO", format_msg(record_id, msg, wd_item.wd_item_id, record_prop))
-    except Exception as e:
-        print(e)
-        PBB_Core.WDItemEngine.log("ERROR", format_msg(record_id, str(e), wd_item.wd_item_id, record_prop))
-
-
-def make_ref_source(source_doc, id_prop, identifier):
+def make_ref_source(source_doc, id_prop, identifier, login=None):
     """
     Reference is made up of:
     stated_in: if the source has a release #:
@@ -107,6 +86,7 @@ def make_ref_source(source_doc, id_prop, identifier):
         else, stated in the source
     link to id: link to identifier in source
     retrieved: only if source has no release #
+    login: must be passed if you want to be able to create new release items
 
     :param source_doc:
     :param id_prop:
@@ -124,10 +104,14 @@ def make_ref_source(source_doc, id_prop, identifier):
     link_to_id = PBB_Core.WDString(value=str(identifier), prop_nr=prop_ids[id_prop], is_reference=True)
 
     if "release" in source_doc:
-        release = str(source_doc['release'])
-        if release not in release_items[source]:
-            raise ValueError("Must create release by hand, for now...: {}".format(source_doc))
-        stated_in = PBB_Core.WDItemID(value=release_items[source][release], prop_nr='P248', is_reference=True)
+        source_doc['release'] = str(source_doc['release'])
+        title = "{} Release {}".format(source_doc['_id'], source_doc['release'])
+        description = "Release {} of {}".format(source_doc['release'], source_doc['_id'])
+        edition_of_wdid = source_items[source_doc['_id']]
+        release = PBB_Helpers.Release(title, description, source_doc['release'],
+                                      edition_of_wdid=edition_of_wdid).get_or_create(login)
+
+        stated_in = PBB_Core.WDItemID(value=release, prop_nr='P248', is_reference=True)
         reference = [stated_in, link_to_id]
     else:
         date_string = source_doc['timestamp']
@@ -138,23 +122,9 @@ def make_ref_source(source_doc, id_prop, identifier):
     return reference
 
 
-
-
 def make_reference(source, id_prop, identifier, retrieved):
     reference = [
         PBB_Core.WDItemID(value=source_items[source], prop_nr='P248', is_reference=True),  # stated in
         PBB_Core.WDString(value=str(identifier), prop_nr=prop_ids[id_prop], is_reference=True),  # Link to ID
         PBB_Core.WDTime(retrieved.strftime('+%Y-%m-%dT00:00:00Z'), prop_nr='P813', is_reference=True)]
     return reference
-
-
-def format_msg(main_data_id, message, wd_id, external_id_prop=None):
-    # escape double quotes and quote string with commas,
-    # so it can be read by pd.read_csv(fp, escapechar='\\')
-    message = message.replace("\"", "\\\"")
-    message = "\"" + message + "\"" if "," in message else message
-    message = message.replace(",", "")
-    msg = '{main_data_id},{message},{wd_id},{prop}'.format(
-        main_data_id=main_data_id, message=message,
-        wd_id=wd_id, prop=external_id_prop)
-    return msg

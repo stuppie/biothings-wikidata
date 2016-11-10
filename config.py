@@ -71,3 +71,6 @@ HIPCHAT_CONFIG = {
 }
 # path to ipcluster json config file (if any)
 CLUSTER_CLIENT_JSON = None
+
+LOGGING_HOST = "35.160.125.64"
+LOGGING_PORT = "8000"

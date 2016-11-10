@@ -15,7 +15,7 @@ from tqdm import tqdm
 #DATA_DIR = "/home/gstupp/projects/wikidatabots/interproscan/data"
 
 
-def release_info(data_folder):
+def parse_release_info(data_folder):
     file_path = os.path.join(data_folder, "interpro.xml.gz")
     f = gzip.GzipFile(file_path)
     context = iter(et.iterparse(f, events=("start", "end")))
@@ -57,14 +57,18 @@ def parse_interpro_xml(data_folder):
         root.clear()
 
 
-def parse_protein_ipr(data_folder, ipr_items):
+def parse_protein_ipr(data_folder, ipr_items, debug=False):
     file_path = os.path.join(data_folder, "protein2ipr.dat.gz")
     print(file_path)
     p = subprocess.Popen(["zcat", file_path], stdout=subprocess.PIPE).stdout
     d = {}
     p2ipr = map(lambda x: x.decode('utf-8').rstrip().split('\t'), p)
+    n = 0
     for key, lines in tqdm(groupby(p2ipr, key=lambda x: x[0]), total=51536456, miniters=1000000):
         # the total is just for a time estimate. Nothing bad happens if the total is wrong
+        n += 1
+        if debug and n > 1000:
+            break
         protein = []
         for line in lines:
             uniprot_id, interpro_id, name, ext_id, start, stop = line

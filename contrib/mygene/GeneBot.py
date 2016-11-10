@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 import ChromosomeBot
 from HelperBot import strain_info, format_msg, make_ref_source
-from SourceBot import get_source_version, get_data_from_mygene
+from SourceBot import get_source_versions, get_data_from_mygene
 from local import WDUSER, WDPASS
 
 ENTREZ_PROP = "P351"
@@ -48,9 +48,9 @@ def wd_item_construction(record, strain_info, chrom_wdid, login):
 
     # If the source is "entrez", the reference identifier to be used is "entrez_gene"
     # These are defined in HelperBot
-    source_ref_id = {'ensembl': 'ensembl_gene',
-                     'entrez': 'entrez_gene',
-                     'uniprot': 'uniprot'}
+    source_ref_id = {'Ensembl': 'ensembl_gene',
+                     'Entrez': 'entrez_gene',
+                     'Uniprot': 'uniprot'}
 
     def gene_item_statements():
         """
@@ -130,11 +130,11 @@ def run(login, gene_records, chrom_wdid):
     for record in tqdm(gene_records):
         if 'genomic_pos' not in record:
             # see: http://mygene.info/v3/gene/855814
-            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "no_position", '', ENTREZ_PROP))
+            PBB_Core.WDItemEngine.log("WARNING", format_msg(record['_id']['@value'], "no_position", '', ENTREZ_PROP))
             continue
         if isinstance(record['genomic_pos']['@value'], list):
             # see: http://mygene.info/v3/gene/853483
-            PBB_Core.WDItemEngine.log("ERROR", format_msg(record['_id']['@value'], "multiple_positions", '', ENTREZ_PROP))
+            PBB_Core.WDItemEngine.log("WARNING", format_msg(record['_id']['@value'], "multiple_positions", '', ENTREZ_PROP))
             continue
         wd_item_construction(record, strain_info, chrom_wdid, login)
 
@@ -147,7 +147,7 @@ def main(log_dir="./logs", run_id=None):
 
     log_name = 'YeastBot_gene-{}.log'.format(run_id)
     __metadata__['log_name'] = log_name
-    __metadata__['release'] = get_source_version()
+    __metadata__['sources'] = get_source_versions()
 
     records = get_data_from_mygene()
 

@@ -1,3 +1,2 @@
-#from .uploader import InterproUploader, InterproDbinfoUploader, InterproProteinUploader
-from .uploader import InterproDbinfoUploader
+from .uploader import InterproUploader, InterproProteinUploader
 from .dumper import InterproDumper

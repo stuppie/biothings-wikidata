@@ -13,8 +13,8 @@ from ProteinBoxBot_Core import PBB_login, PBB_Core, PBB_Helpers
 from interproscan.WDHelper import WDHelper
 from tqdm import tqdm
 
-from HelperBot import strain_info, go_props, go_evidence_codes, make_reference, format_msg, make_ref_source, try_write
-from SourceBot import get_data_from_mygene, get_source_version
+from HelperBot import strain_info, go_props, go_evidence_codes, format_msg, make_ref_source, try_write
+from SourceBot import get_data_from_mygene, get_source_versions
 from local import WDUSER, WDPASS
 
 __metadata__ = {'name': 'YeastBot_Protein',
@@ -197,7 +197,7 @@ def main(log_dir="./logs", run_id=None, add_pubmed=True):
     __metadata__['run_id'] = run_id
     log_name = 'YeastBot_protein-{}.log'.format(run_id)
     __metadata__['log_name'] = log_name
-    __metadata__['release'] = get_source_version()
+    __metadata__['sources'] = get_source_versions()
 
     records = get_data_from_mygene()
 
