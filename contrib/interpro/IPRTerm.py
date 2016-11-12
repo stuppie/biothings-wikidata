@@ -130,7 +130,7 @@ class IPRTerm:
         if len(statements) == 1:
             return
 
-        wd_item = PBB_Core.WDItemEngine(item_name=self.name, domain='interpro', data=statements,
+        wd_item = PBB_Core.WDItemEngine(wd_item_id=self.wdid, domain='interpro', data=statements,
                                         append_value=['P279', 'P527', 'P361'],
                                         fast_run=True, fast_run_base_filter=IPRTerm.fast_run_base_filter)
 

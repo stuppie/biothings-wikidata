@@ -1,5 +1,4 @@
 import biothings.dataload.uploader as uploader
-import itertools
 import config
 
 from . import ItemsBot, ProteinBot
